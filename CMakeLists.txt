@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.5)
 project(MeltSim VERSION 0.1.0)
 
 # Set C++ standard
@@ -35,19 +35,6 @@ FetchContent_Declare(
     GIT_TAG 0.9.9.8
 )
 
-# Assimp - Model loading
-FetchContent_Declare(
-    assimp
-    GIT_REPOSITORY https://github.com/assimp/assimp.git
-    GIT_TAG v5.2.5
-)
-set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_ZLIB ON CACHE BOOL "" FORCE)
-set(ASSIMP_NO_EXPORT ON CACHE BOOL "" FORCE)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
-
 # Glad - OpenGL loader
 set(GLAD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/glad")
 
@@ -57,6 +44,11 @@ target_include_directories(glad PUBLIC "${GLAD_DIR}/include")
 if(APPLE)
     target_compile_definitions(glad PRIVATE GLAD_GL_IMPLEMENTATION)
 endif()
+
+# Find Assimp from Homebrew
+find_package(assimp REQUIRED)
+include_directories(/opt/homebrew/include)
+link_directories(/opt/homebrew/lib)
 
 # Define source files
 set(SOURCES
@@ -97,4 +89,4 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 endif()
 
 # Make dependencies available
-FetchContent_MakeAvailable(glfw glm assimp)
+FetchContent_MakeAvailable(glfw glm)
