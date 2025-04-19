@@ -49,7 +49,7 @@ link_directories(/opt/homebrew/lib)
 set(SOURCES
     src/main.cpp
     src/shader_utils.cpp
-    src/mesh_loader.cpp
+    src/mesh.cpp
     src/floor.cpp
     src/input.cpp
 )
