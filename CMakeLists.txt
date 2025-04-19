@@ -1,20 +1,17 @@
 cmake_minimum_required(VERSION 3.5)
 project(MeltSim VERSION 0.1.0)
 
-# Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Silence OpenGL deprecation warnings on macOS
 if(APPLE)
     add_definitions(-DGL_SILENCE_DEPRECATION)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=deprecated-declarations")
 endif()
 
-# Use FetchContent for external dependencies
 include(FetchContent)
 
-# GLFW - Window management
+# GLFW
 FetchContent_Declare(
     glfw
     GIT_REPOSITORY https://github.com/glfw/glfw.git
@@ -28,38 +25,39 @@ if(APPLE)
     set(GLFW_USE_MENUBAR OFF CACHE BOOL "" FORCE)
 endif()
 
-# GLM - Math library
+# GLM
 FetchContent_Declare(
     glm
     GIT_REPOSITORY https://github.com/g-truc/glm.git
     GIT_TAG 0.9.9.8
 )
 
-# Glad - OpenGL loader
+# Glad
 set(GLAD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/glad")
-
-# Add Glad as a library
 add_library(glad "${GLAD_DIR}/src/glad.c")
 target_include_directories(glad PUBLIC "${GLAD_DIR}/include")
 if(APPLE)
     target_compile_definitions(glad PRIVATE GLAD_GL_IMPLEMENTATION)
 endif()
 
-# Find Assimp from Homebrew
+# Assimp
 find_package(assimp REQUIRED)
 include_directories(/opt/homebrew/include)
 link_directories(/opt/homebrew/lib)
 
-# Define source files
+# Source files
 set(SOURCES
     src/main.cpp
-    #ADD SOURCE FILES HERE WHEN WE ADD MORE
+    src/shader_utils.cpp
+    src/mesh_loader.cpp
+    src/floor.cpp
+    src/input.cpp
 )
 
-# Create executable
+# Executable
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-# Include directories
+# Includes
 target_include_directories(${PROJECT_NAME} PRIVATE
     src
     "${GLAD_DIR}/include"
@@ -73,7 +71,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     assimp
 )
 
-# For macOS, we need to link to additional frameworks
+# macOS frameworks
 if(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE
         "-framework OpenGL"
@@ -83,10 +81,10 @@ if(APPLE)
     )
 endif()
 
-# Copy assets folder to build directory if it exists
+# Copy assets
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
     file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/assets" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 endif()
 
-# Make dependencies available
+# Enable dependencies
 FetchContent_MakeAvailable(glfw glm)
