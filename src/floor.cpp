@@ -4,10 +4,10 @@
 void setupFloor(unsigned int& VAO, unsigned int& VBO, unsigned int& EBO) {
     float floorVertices[] = {
         // positions         // normals (facing up)
-        -5.0f, -1.0f, -5.0f,  0.0f, 1.0f, 0.0f,
-         5.0f, -1.0f, -5.0f,  0.0f, 1.0f, 0.0f,
-         5.0f, -1.0f,  5.0f,  0.0f, 1.0f, 0.0f,
-        -5.0f, -1.0f,  5.0f,  0.0f, 1.0f, 0.0f
+        -10.0f, -1.0f, -10.0f,  0.0f, 1.0f, 0.0f,
+         10.0f, -1.0f, -10.0f,  0.0f, 1.0f, 0.0f,
+         10.0f, -1.0f,  10.0f,  0.0f, 1.0f, 0.0f,
+        -10.0f, -1.0f,  10.0f,  0.0f, 1.0f, 0.0f
     };
 
     unsigned int floorIndices[] = {
