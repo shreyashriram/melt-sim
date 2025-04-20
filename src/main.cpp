@@ -12,7 +12,7 @@
 
 #include <iostream>
 
-#include "leaven/surfaceSampler.h"   // ✅ This is key
+#include "leaven/surfaceSampler.h"  
 #include "leaven/typedef.h"
 using namespace leaven;
 #include <Eigen/Dense>
@@ -101,7 +101,7 @@ int main() {
     //             << eigenIndices(2, i) << "\n";
     // }
 
-    scalar minRadius = 0.01f;             // spacing between samples (smaller = more points)
+    scalar minRadius = 0.001f;             // spacing between samples (smaller = more points)
     unsigned int numTrials = 60;         // number of sampling attempts
     scalar initialDensity = 5.0f;        // how many initial points to generate
     unsigned int distanceNorm = 2;       // 2 = Euclidean distance (common for 3D)
@@ -122,7 +122,10 @@ int main() {
     // for (int i = 0; i < std::min(10, (int)sampledPoints.size()); ++i) {
     //     std::cout << "Point " << i << ": " << sampledPoints[i].transpose() << "\n";
     // }
-
+    
+    for (auto& pt : sampledPoints) {
+        pt.y() += 1.0f;
+    }
 
     std::vector<float> pointData;
     for (const auto& p : sampledPoints) {
@@ -138,7 +141,7 @@ int main() {
         particles.emplace_back(pos);
     }
 
-    float deltaTime = 0.001f;
+    float deltaTime = 0.002f;
 
     unsigned int pointsVAO, pointsVBO;
     glGenVertexArrays(1, &pointsVAO);
@@ -159,8 +162,8 @@ int main() {
     glm::mat4 model = glm::mat4(1.0f);
 
     // View: camera level with cube/cow
-    glm::vec3 cameraPos = glm::vec3(0.0f, 1.0f, 2.0f);  // higher Y
-    glm::vec3 target = glm::vec3(0.0f, 0.0f, 0.0f);     // still looking at the cow
+    glm::vec3 cameraPos = glm::vec3(0.0f, 0.75f, 2.5f);  // higher Y
+    glm::vec3 target = glm::vec3(0.0f, 0.5f, 0.0f);     // still looking at the cow
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
     glm::mat4 view = glm::lookAt(cameraPos, target, up);    
@@ -221,7 +224,7 @@ int main() {
     
         // Draw floor at origin
         glm::mat4 floorModel = glm::mat4(1.0f);
-        floorModel = glm::translate(floorModel, glm::vec3(0.0f, 0.0f, -0.5f));
+        // floorModel = glm::translate(floorModel, glm::vec3(0.0f, 0.0f, -0.5f));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(floorModel));
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
         glBindVertexArray(floorVAO);
@@ -235,15 +238,15 @@ int main() {
     
         glBindVertexArray(pointsVAO);
         glPointSize(7.0f);  // increase for visibility
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.2f, 0.5f, 1.0f); // red glow
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 1.0f, 0.0f, 0.0f); // red glow
         glDrawArrays(GL_POINTS, 0, sampledPoints.size());
 
 
-        // Draw cow on top of the cube (assumes cube height is 1.0)
-        // glm::mat4 cowModel = glm::translate(model, glm::vec3(0.0f, 0.8f, 0.2f));
-        // cowModel = glm::rotate(cowModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
+        // // Draw cow on top of the cube (assumes cube height is 1.0)
+        // glm::mat4 cowModel = glm::translate(model, glm::vec3(0.0f, 1.0f, 0.0f));
+        // // cowModel = glm::rotate(cowModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
         // glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cowModel));
-        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.2f, 0.2f);
+        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.2f, 0.5f, 1.0f);
         // cowMesh.draw();
     
         glfwSwapBuffers(window);
