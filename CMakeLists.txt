@@ -45,17 +45,30 @@ find_package(assimp REQUIRED)
 include_directories(/opt/homebrew/include)
 link_directories(/opt/homebrew/lib)
 
-# Source files
-set(SOURCES
+
+# Add source files
+add_executable(MeltSim
     src/main.cpp
-    src/shader_utils.cpp
     src/mesh.cpp
+    src/mesh.h
     src/floor.cpp
+    src/floor.h
     src/input.cpp
+    src/input.h
+    src/shader_utils.cpp
+    src/shader_utils.h
+    src/leaven/surfaceSampler.cpp
+    # Add more source files as needed
+)
+
+# Now you can add include directories
+target_include_directories(MeltSim PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/eigen-3.4.0
 )
 
 # Executable
-add_executable(${PROJECT_NAME} ${SOURCES})
+# add_executable(${PROJECT_NAME} ${SOURCES})
 
 # Includes
 target_include_directories(${PROJECT_NAME} PRIVATE
