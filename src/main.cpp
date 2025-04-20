@@ -23,6 +23,13 @@ using Vector3 = Eigen::Matrix<scalar, 3, 1>;
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
+struct Particle {
+    glm::vec3 position;
+    glm::vec3 velocity;
+
+    Particle(glm::vec3 pos) : position(pos), velocity(0.0f) {}
+};
+
 int main() {
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -124,6 +131,15 @@ int main() {
         pointData.push_back(p.z());
     }
 
+    std::vector<Particle> particles;
+
+    for (const auto& pt : sampledPoints) {
+        glm::vec3 pos(pt.x(), pt.y(), pt.z());
+        particles.emplace_back(pos);
+    }
+
+    float deltaTime = 0.001f;
+
     unsigned int pointsVAO, pointsVBO;
     glGenVertexArrays(1, &pointsVAO);
     glGenBuffers(1, &pointsVBO);
@@ -143,7 +159,7 @@ int main() {
     glm::mat4 model = glm::mat4(1.0f);
 
     // View: camera level with cube/cow
-    glm::vec3 cameraPos = glm::vec3(0.0f, 0.5f, 3.0f);  // higher Y
+    glm::vec3 cameraPos = glm::vec3(0.0f, 1.0f, 2.0f);  // higher Y
     glm::vec3 target = glm::vec3(0.0f, 0.0f, 0.0f);     // still looking at the cow
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
@@ -156,7 +172,39 @@ int main() {
     glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
     glm::vec3 objectColor(0.0f, 0.4f, 0.7f);
 
+    
+
     while (!glfwWindowShouldClose(window)) {
+
+        for (auto& p : particles) {
+            // Apply gravity
+            p.velocity += glm::vec3(0.0f, -9.8f, 0.0f) * deltaTime;
+        
+            // Update position
+            p.position += p.velocity * deltaTime;
+        
+            // Floor collision
+            if (p.position.y < 0.0f) {
+                p.position.y = 0.0f;
+                p.velocity.y *= -0.5f; // bounce with damping
+            }
+        }
+
+        std::vector<float> updatedData;
+        for (const auto& p : particles) {
+            updatedData.push_back(p.position.x);
+            updatedData.push_back(p.position.y);
+            updatedData.push_back(p.position.z);
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, pointsVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, updatedData.size() * sizeof(float), updatedData.data());
+
+        
+        glBufferData(GL_ARRAY_BUFFER, pointData.size() * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+
+
+
         processInput(window);
     
         glClearColor(0.9f, 0.9f, 0.9f, 1.0f);
@@ -173,6 +221,7 @@ int main() {
     
         // Draw floor at origin
         glm::mat4 floorModel = glm::mat4(1.0f);
+        floorModel = glm::translate(floorModel, glm::vec3(0.0f, 0.0f, -0.5f));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(floorModel));
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
         glBindVertexArray(floorVAO);
@@ -186,7 +235,7 @@ int main() {
     
         glBindVertexArray(pointsVAO);
         glPointSize(7.0f);  // increase for visibility
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 1.0f, 0.2f, 0.2f); // red glow
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.2f, 0.5f, 1.0f); // red glow
         glDrawArrays(GL_POINTS, 0, sampledPoints.size());
 
 
