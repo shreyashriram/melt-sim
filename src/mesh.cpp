@@ -35,6 +35,7 @@ Mesh::~Mesh() {
 }
 
 void Mesh::loadMesh(const std::string& path) {
+    
     Assimp::Importer importer;
     const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals);
 

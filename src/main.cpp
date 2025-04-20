@@ -12,6 +12,14 @@
 
 #include <iostream>
 
+#include "leaven/surfaceSampler.h"   // ✅ This is key
+#include "leaven/typedef.h"
+using namespace leaven;
+#include <Eigen/Dense>
+using scalar = float;
+using Vector3 = Eigen::Matrix<scalar, 3, 1>;
+
+
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
@@ -40,13 +48,81 @@ int main() {
 
     unsigned int shaderProgram = createShaderProgram("../src/assets/shaders/vertex_shader.glsl", "../src/assets/shaders/fragment_shader.glsl");
 
-    Mesh cowMesh("../src/assets/models/cow.obj");
-    Mesh cubeMesh("../src/assets/models/cube.obj");
-
     unsigned int floorVAO, floorVBO, floorEBO;
     setupFloor(floorVAO, floorVBO, floorEBO);
 
     glEnable(GL_DEPTH_TEST);
+
+    // ! Mesh Subsampling 
+    // Mesh cowMesh("../src/assets/models/cow.obj");
+    Mesh cubeMesh("../src/assets/models/cube.obj");
+
+    size_t numVertices = cubeMesh.vertices.size() / 6;
+    Eigen::Matrix<scalar, 3, Eigen::Dynamic> eigenVertices(3, numVertices);
+
+    for (size_t i = 0; i < numVertices; ++i) {
+        float x = cubeMesh.vertices[i * 6 + 0];
+        float y = cubeMesh.vertices[i * 6 + 1];
+        float z = cubeMesh.vertices[i * 6 + 2];
+        eigenVertices.col(i) = Vector3(x, y, z);
+    }
+    
+    // ? Debugging 
+    // std::cout << "Loaded " << numVertices << " vertices.\n";
+    // for (size_t i = 0; i < std::min(numVertices, size_t(5)); ++i) {
+    //     std::cout << "Vertex " << i << ": " << eigenVertices.col(i).transpose() << "\n";
+    // }
+
+
+    size_t numTriangles = cubeMesh.indices.size() / 3;
+    Eigen::Matrix<unsigned int, 3, Eigen::Dynamic> eigenIndices(3, numTriangles);
+
+    for (size_t i = 0; i < numTriangles; ++i) {
+        eigenIndices.col(i) = Eigen::Matrix<unsigned int, 3, 1>(
+            cubeMesh.indices[i * 3 + 0],
+            cubeMesh.indices[i * 3 + 1],
+            cubeMesh.indices[i * 3 + 2]
+        );
+    }
+    
+    // ? Debugging    
+    // std::cout << "Loaded " << numTriangles << " triangles.\n";
+    // for (size_t i = 0; i < std::min(numTriangles, size_t(5)); ++i) {
+    //     std::cout << "Triangle " << i << ": "
+    //             << eigenIndices(0, i) << ", "
+    //             << eigenIndices(1, i) << ", "
+    //             << eigenIndices(2, i) << "\n";
+    // }
+
+    scalar minRadius = 0.1f;             // spacing between samples (smaller = more points)
+    unsigned int numTrials = 30;         // number of sampling attempts
+    scalar initialDensity = 5.0f;        // how many initial points to generate
+    unsigned int distanceNorm = 2;       // 2 = Euclidean distance (common for 3D)
+
+    SurfaceSampler sampler;
+
+    std::vector<Vector3> sampledPoints = sampler.sampleMesh(
+        eigenVertices,
+        eigenIndices,
+        minRadius,
+        numTrials,
+        initialDensity,
+        distanceNorm
+    );
+
+    // ? Debugging
+    // std::cout << "Sampled " << sampledPoints.size() << " points from the cube mesh.\n";
+    // for (int i = 0; i < std::min(10, (int)sampledPoints.size()); ++i) {
+    //     std::cout << "Point " << i << ": " << sampledPoints[i].transpose() << "\n";
+    // }
+
+    std::vector<float> pointData;
+    for (const auto& p : sampledPoints) {
+        pointData.push_back(p.x());
+        pointData.push_back(p.y());
+        pointData.push_back(p.z());
+    }
+
 
     glm::mat4 model = glm::mat4(1.0f);
 
@@ -56,8 +132,8 @@ int main() {
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
     glm::mat4 view = glm::lookAt(cameraPos, target, up);    
-    
-    // glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -5.0f));
+
+
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
 
     glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
@@ -86,18 +162,18 @@ int main() {
         glBindVertexArray(floorVAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     
-        // // Draw cube at origin
+        // Draw cube at origin
         glm::mat4 model = glm::mat4(1.0f); // Identity matrix
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.4f, 0.7f);
         cubeMesh.draw();
     
         // Draw cow on top of the cube (assumes cube height is 1.0)
-        glm::mat4 cowModel = glm::translate(model, glm::vec3(0.0f, 0.8f, 0.2f));
-        cowModel = glm::rotate(cowModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cowModel));
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.2f, 0.2f);
-        cowMesh.draw();
+        // glm::mat4 cowModel = glm::translate(model, glm::vec3(0.0f, 0.8f, 0.2f));
+        // cowModel = glm::rotate(cowModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
+        // glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cowModel));
+        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.2f, 0.2f);
+        // cowMesh.draw();
     
         glfwSwapBuffers(window);
         glfwPollEvents();

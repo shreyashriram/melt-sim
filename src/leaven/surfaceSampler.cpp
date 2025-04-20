@@ -35,8 +35,13 @@ using namespace leaven;
 
 std::vector<Eigen::Matrix<scalar, 3, 1>> SurfaceSampler::sampleMesh(
         const Eigen::Matrix<scalar, 3, Eigen::Dynamic> &vertices,
-        const Eigen::Matrix<unsigned int, 3, Eigen::Dynamic> &indices, const scalar &minRadius,
-        const unsigned int &numTrials, const scalar &initialPointsDensity, const unsigned int &distanceNorm) {
+        const Eigen::Matrix<unsigned int, 3, Eigen::Dynamic> &indices, 
+        const scalar &minRadius,
+        const unsigned int &numTrials, 
+        const scalar &initialPointsDensity, 
+        const unsigned int &distanceNorm
+    ) {
+        
     std::vector<Vector3> samples;
 
     scalar cellSize = minRadius / sqrt(3.0);

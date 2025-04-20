@@ -14,6 +14,9 @@ public:
     void bind() const;
     void unbind() const;
 
+    std::vector<float> vertices;
+    std::vector<unsigned int> indices;
+
     // Future extensibility:
     // glm::mat4 transform;
     // std::string name;
@@ -23,8 +26,6 @@ private:
     void loadMesh(const std::string& path);
 
     unsigned int VAO, VBO, EBO;
-    std::vector<float> vertices;
-    std::vector<unsigned int> indices;
 };
 
 #endif
