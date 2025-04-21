@@ -3,8 +3,6 @@ build/
 out/
 cmake-build-*/
 
-external/
-
 # IDE files
 .vs/
 .idea/
@@ -12,8 +10,6 @@ external/
 *.suo
 *.sln.docstates
 .vscode/
-
-
 
 # Binaries
 *.exe
@@ -31,4 +27,3 @@ Makefile
 # Editor backup files
 *~
 *.swp
-
