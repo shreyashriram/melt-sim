@@ -57,7 +57,13 @@ add_executable(MeltSim
     src/input.h
     src/shader_utils.cpp
     src/shader_utils.h
+    src/MPMSimulator.cpp
+    src/MPMSimulator.h
+    src/particle_renderer.cpp
+    src/particle_renderer.h
+    src/Particle.h
     src/leaven/surfaceSampler.cpp
+
     # Add more source files as needed
 )
 
