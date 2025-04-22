@@ -1,0 +1,10 @@
+# Front face of the cube (at z = -0.5)
+
+v -0.5 -0.5 -0.5  # 1 - bottom left
+v  0.5 -0.5 -0.5  # 2 - bottom right
+v  0.5  0.5 -0.5  # 3 - top right
+v -0.5  0.5 -0.5  # 4 - top left
+
+# Front face triangles
+f 1 2 3
+f 1 3 4

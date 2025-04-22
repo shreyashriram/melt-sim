@@ -10,6 +10,10 @@
 #include "floor.h"
 #include "input.h"
 
+// Particle simulation includes
+#include "particleSampler.h"
+#include "particleRenderer.h"
+
 #include <iostream>
 
 const unsigned int SCR_WIDTH = 800;
@@ -42,6 +46,16 @@ int main() {
 
     Mesh cowMesh("../src/assets/models/cow.obj");
     Mesh cubeMesh("../src/assets/models/cube.obj");
+    
+    Mesh squareMesh("../src/assets/models/square.obj"); //to test 2D
+
+    // Create particles from the cow mesh
+    ParticleSampler particleSampler;
+    std::vector<Particle> cubeParticles = particleSampler.sampleMeshVolume("../src/assets/models/cow.obj", 0.01f);
+
+    // Initialize particle renderer
+    ParticleRenderer particleRenderer;
+    particleRenderer.init("../src/assets/shaders");
 
     unsigned int floorVAO, floorVBO, floorEBO;
     setupFloor(floorVAO, floorVBO, floorEBO);
@@ -90,14 +104,18 @@ int main() {
         glm::mat4 model = glm::mat4(1.0f); // Identity matrix
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.4f, 0.7f);
-        cubeMesh.draw();
+        // cubeMesh.draw();
     
         // Draw cow on top of the cube (assumes cube height is 1.0)
         glm::mat4 cowModel = glm::translate(model, glm::vec3(0.0f, 0.8f, 0.2f));
         cowModel = glm::rotate(cowModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cowModel));
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.2f, 0.2f);
-        cowMesh.draw();
+        // cowMesh.draw();
+
+        // In your render loop, add after drawing the cow mesh:
+        particleRenderer.render(cubeParticles, view, projection);
+        
     
         glfwSwapBuffers(window);
         glfwPollEvents();
