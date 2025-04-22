@@ -14,6 +14,8 @@
 #include "particleSampler.h"
 #include "particleRenderer.h"
 
+#include "mpmSimulation.h"   
+
 #include <iostream>
 
 const unsigned int SCR_WIDTH = 800;
@@ -48,10 +50,16 @@ int main() {
     Mesh cubeMesh("../src/assets/models/cube.obj");
     
     Mesh squareMesh("../src/assets/models/square.obj"); //to test 2D
+    MPMSimulation mpmSim;
 
     // Create particles from the cow mesh
     ParticleSampler particleSampler;
-    std::vector<Particle> cubeParticles = particleSampler.sampleMeshVolume("../src/assets/models/cow.obj", 0.01f);
+    std::vector<Particle> cubeParticles = particleSampler.sampleMeshVolume("../src/assets/models/cube.obj", 0.05f);
+    std::cout << "Created " << cubeParticles.size() << " particles from cube mesh" << std::endl;
+
+    // Initialize MPM simulation
+    mpmSim.initialize(cubeParticles);
+
 
     // Initialize particle renderer
     ParticleRenderer particleRenderer;
@@ -79,44 +87,46 @@ int main() {
     glm::vec3 objectColor(0.0f, 0.4f, 0.7f);
 
     while (!glfwWindowShouldClose(window)) {
+        // Process input
         processInput(window);
-    
+        
+        // Update MPM simulation (add this line)
+        mpmSim.update(0.016f); // assuming ~60 FPS, or use actual deltaTime
+        
         glClearColor(0.9f, 0.9f, 0.9f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
+        
         glUseProgram(shaderProgram);
-    
         // Upload camera and lighting uniforms
         glUniform3fv(glGetUniformLocation(shaderProgram, "viewPos"), 1, glm::value_ptr(cameraPos));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightPos"), 1, glm::value_ptr(lightPos));
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
-    
+        
         // Draw floor at origin
         glm::mat4 floorModel = glm::mat4(1.0f);
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(floorModel));
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
         glBindVertexArray(floorVAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    
-        // // Draw cube at origin
+        
+        // // Draw cube at origin - commented out as we're using particles instead
         glm::mat4 model = glm::mat4(1.0f); // Identity matrix
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.4f, 0.7f);
-        // cubeMesh.draw();
-    
-        // Draw cow on top of the cube (assumes cube height is 1.0)
+        // cubeMesh.draw(); //uncomment this line to draw the cube
+        
+        // // Draw cow on top of the cube (assumes cube height is 1.0)
         glm::mat4 cowModel = glm::translate(model, glm::vec3(0.0f, 0.8f, 0.2f));
-        cowModel = glm::rotate(cowModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
+        cowModel = glm::rotate(cowModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cowModel));
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.2f, 0.2f);
-        // cowMesh.draw();
-
-        // In your render loop, add after drawing the cow mesh:
-        particleRenderer.render(cubeParticles, view, projection);
+        // cowMesh.draw(); //uncomment this line to draw the cow
         
-    
+        // Draw particles - Updated to use MPM simulation
+        mpmSim.render(view, projection); 
+        
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
