@@ -54,7 +54,7 @@ int main() {
 
     // Create particles from the cow mesh
     ParticleSampler particleSampler;
-    std::vector<Particle> cubeParticles = particleSampler.sampleMeshVolume("../src/assets/models/cube.obj", 0.05f);
+    std::vector<Particle> cubeParticles = particleSampler.sampleMeshVolume("../src/assets/models/cube.obj", 0.02f);
     std::cout << "Created " << cubeParticles.size() << " particles from cube mesh" << std::endl;
 
     // Initialize MPM simulation
@@ -74,6 +74,8 @@ int main() {
 
     // View: camera level with cube/cow
     glm::vec3 cameraPos = glm::vec3(0.0f, 1.5f, 5.0f);  // higher Y
+    //Rotate camera 45 degrees around Y axis
+    cameraPos = glm::vec3(glm::rotate(glm::mat4(1.0f), glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f)) * glm::vec4(cameraPos, 1.0f));
     glm::vec3 target = glm::vec3(0.0f, 1.0f, 0.0f);     // still looking at the cow
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
@@ -124,8 +126,12 @@ int main() {
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.2f, 0.2f);
         // cowMesh.draw(); //uncomment this line to draw the cow
         
+        //use render function to draw particles
+        // particleRenderer.render(cubeParticles, view, projection);
+
         // Draw particles - Updated to use MPM simulation
         mpmSim.render(view, projection); 
+
         
         glfwSwapBuffers(window);
         glfwPollEvents();

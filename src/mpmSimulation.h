@@ -40,8 +40,8 @@ private:
     const float particleVolume = 1.0f;          // Volume of each particle
     const float youngsModulus = 1e5f;           // Elastic stiffness
     const float poissonRatio = 0.2f;            // Poisson's ratio
-    const float yieldStress = 1e3f;             // Stress threshold for melting
-    const float decayRate = 0.1f;               // Rate at which material becomes fluid
+    const float yieldStress = 100.0f;             // Stress threshold for melting
+    const float decayRate = 0.5f;               // Rate at which material becomes fluid
     float mu;                                   // Lame parameter (shear modulus)
     float lambda;                               // Lame parameter (bulk modulus)
     

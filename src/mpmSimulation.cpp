@@ -376,9 +376,12 @@ void MPMSimulation::updateMaterialState(MaterialPoint& p, float dt) {
     }
     
     // Determine if material should start melting
-    if (vonMisesStress > yieldStress || p.temperature > 0.7f) {
+    if (vonMisesStress > yieldStress || p.temperature > 0.4f) {
         p.fluidity += decayRate * dt * 10.0f;
-        p.fluidity = clamp(p.fluidity, 0.0f, 1.0f);  // Use our template function instead of std::clamp
+        p.fluidity = clamp(p.fluidity, 0.0f, 1.0f);
+    }
+    if (p.position.y < 0.3f) {
+        p.temperature += dt * 0.5f;  // 5x stronger heating (from 0.1f)
     }
 }
 
