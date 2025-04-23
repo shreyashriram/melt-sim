@@ -54,7 +54,7 @@ int main() {
 
     // Create particles from the cow mesh
     ParticleSampler particleSampler;
-    std::vector<Particle> cubeParticles = particleSampler.sampleMeshVolume("../src/assets/models/cube.obj", 0.02f);
+    std::vector<Particle> cubeParticles = particleSampler.sampleMeshVolume("../src/assets/models/cube.obj", 0.05f);
     std::cout << "Created " << cubeParticles.size() << " particles from cube mesh" << std::endl;
 
     // Initialize MPM simulation
