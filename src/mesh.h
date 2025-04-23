@@ -12,7 +12,7 @@ public:
 
     void draw() const;
     void bind() const;
-    void unbind() const;
+    void unBind() const;
 
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
@@ -23,9 +23,10 @@ public:
     // material info, texture, etc.
 
 private:
-    void loadMesh(const std::string& path);
-
+    
     unsigned int VAO, VBO, EBO;
+    void setupBuffers();
+    
 };
 
 #endif

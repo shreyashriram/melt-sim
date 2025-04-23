@@ -53,6 +53,8 @@ add_executable(MeltSim
     src/mesh.h
     src/floor.cpp
     src/floor.h
+    src/plane.cpp
+    src/plane.h
     src/input.cpp
     src/input.h
     src/shader_utils.cpp
