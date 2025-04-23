@@ -62,8 +62,11 @@ add_executable(MeltSim
     src/particleRenderer.h
     src/particleSampler.cpp
     src/particleSampler.h
-    src/mpmSimulation.cpp
-    src/mpmSimulation.h
+    # src/mpmSimulation.cpp
+    src/mpmSimulator.h
+    src/mpmSimulator.cpp
+    
+    # src/mpmSimulation.h
     src/taichi.h
 
     # Add more source files as needed

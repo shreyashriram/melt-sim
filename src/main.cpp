@@ -13,13 +13,17 @@
 // Particle simulation includes
 #include "particleSampler.h"
 #include "particleRenderer.h"
-
-#include "mpmSimulation.h"   
+#include "mpmSimulator.h" // Add the MPM simulator header
 
 #include <iostream>
+#include <chrono> // For timing
 
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
+
+// Timing variables
+float deltaTime = 0.0f;
+float lastFrame = 0.0f;
 
 int main() {
     glfwInit();
@@ -50,16 +54,22 @@ int main() {
     Mesh cubeMesh("../src/assets/models/cube.obj");
     
     Mesh squareMesh("../src/assets/models/square.obj"); //to test 2D
-    MPMSimulation mpmSim;
 
-    // Create particles from the cow mesh
+    // Create particles from the cube mesh
     ParticleSampler particleSampler;
     std::vector<Particle> cubeParticles = particleSampler.sampleMeshVolume("../src/assets/models/cube.obj", 0.05f);
     std::cout << "Created " << cubeParticles.size() << " particles from cube mesh" << std::endl;
 
-    // Initialize MPM simulation
-    mpmSim.initialize(cubeParticles);
-
+    // Initialize the MPM simulator
+    MPMSimulator mpmSimulator(0.1f, 0.016f); // Grid size 0.1, time step 0.016 (approx 60fps)
+    mpmSimulator.initialize(cubeParticles);
+    
+    // Set simulation parameters
+    mpmSimulator.setGravity(glm::vec3(0.0f, -9.81f, 0.0f));
+    mpmSimulator.setViscosity(0.05f); // Lower viscosity for water-like behavior
+    mpmSimulator.setDensity(1000.0f);
+    mpmSimulator.setRestDensity(1000.0f);
+    mpmSimulator.setBoundaries(glm::vec3(-2.0f, 0.05f, -2.0f), glm::vec3(2.0f, 4.0f, 2.0f));
 
     // Initialize particle renderer
     ParticleRenderer particleRenderer;
@@ -88,13 +98,44 @@ int main() {
     glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
     glm::vec3 objectColor(0.0f, 0.4f, 0.7f);
 
+    // Simulation flag - pause/play with spacebar
+    bool simulationRunning = true;
+    
+    // Simulation rate - can be slower than rendering if needed
+    const float simulationTimeStep = 0.016f; // 60 Hz
+    float accumulatedTime = 0.0f;
+
     while (!glfwWindowShouldClose(window)) {
+        // Calculate delta time
+        float currentFrame = glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+        
         // Process input
         processInput(window);
         
-        // Update MPM simulation (add this line)
-        mpmSim.update(0.016f); // assuming ~60 FPS, or use actual deltaTime
+        // Toggle simulation with spacebar
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+            static float lastToggleTime = 0.0f;
+            if (currentFrame - lastToggleTime > 0.3f) { // Debounce
+                simulationRunning = !simulationRunning;
+                lastToggleTime = currentFrame;
+                std::cout << "Simulation " << (simulationRunning ? "running" : "paused") << std::endl;
+            }
+        }
         
+        // Update simulation at fixed time step
+        if (simulationRunning) {
+            accumulatedTime += deltaTime;
+            
+            // Run simulation step(s)
+            while (accumulatedTime >= simulationTimeStep) {
+                mpmSimulator.update(cubeParticles);
+                accumulatedTime -= simulationTimeStep;
+            }
+        }
+        
+        // Rendering
         glClearColor(0.9f, 0.9f, 0.9f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
@@ -113,28 +154,39 @@ int main() {
         glBindVertexArray(floorVAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         
-        // // Draw cube at origin - commented out as we're using particles instead
-        glm::mat4 model = glm::mat4(1.0f); // Identity matrix
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.4f, 0.7f);
+        // Draw cube at origin - commented out as we're using particles instead
+        // glm::mat4 model = glm::mat4(1.0f); // Identity matrix
+        // glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
+        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.4f, 0.7f);
         // cubeMesh.draw(); //uncomment this line to draw the cube
         
-        // // Draw cow on top of the cube (assumes cube height is 1.0)
-        glm::mat4 cowModel = glm::translate(model, glm::vec3(0.0f, 0.8f, 0.2f));
-        cowModel = glm::rotate(cowModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cowModel));
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.2f, 0.2f);
+        // Draw cow on top of the cube (assumes cube height is 1.0)
+        // glm::mat4 cowModel = glm::translate(model, glm::vec3(0.0f, 0.8f, 0.2f));
+        // cowModel = glm::rotate(cowModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        // glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cowModel));
+        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.2f, 0.2f);
         // cowMesh.draw(); //uncomment this line to draw the cow
         
-        //use render function to draw particles
-        // particleRenderer.render(cubeParticles, view, projection);
+        // Use render function to draw particles - with updated positions from MPM simulation
+        particleRenderer.render(cubeParticles, view, projection);
 
-        // Draw particles - Updated to use MPM simulation
-        mpmSim.render(view, projection); 
-
+        // Display simulation status
+        // For a real UI, you'd want to use ImGui or similar
+        std::string windowTitle = "MeltSim - MPM Fluid [";
+        windowTitle += simulationRunning ? "Running" : "Paused";
+        windowTitle += "] - FPS: " + std::to_string(1.0f / deltaTime);
+        glfwSetWindowTitle(window, windowTitle.c_str());
         
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
     
+    // Clean up
+    glDeleteVertexArrays(1, &floorVAO);
+    glDeleteBuffers(1, &floorVBO);
+    glDeleteBuffers(1, &floorEBO);
+    glDeleteProgram(shaderProgram);
+    
+    glfwTerminate();
+    return 0;
 }
