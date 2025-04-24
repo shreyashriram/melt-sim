@@ -7,7 +7,7 @@
 
 class MPMSimulation {
 public:
-    MPMSimulation();
+    MPMSimulation(std::vector<Particle>& particles);
     void initialize();
     void step(float dt);
     void transferParticlesToGrid();
@@ -20,7 +20,7 @@ private:
     float poissonsRatio;
     int gridSize;
     float gridSpacing;
-    std::vector<Particle> particles;
+    std::vector<Particle>& particles;  // Reference to particles from main
     std::vector<GridNode> grid;
 
     float computeWeight(const glm::vec3& particlePos, const glm::vec3& nodePos);

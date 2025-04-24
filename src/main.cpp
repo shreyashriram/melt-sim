@@ -59,7 +59,7 @@ int main() {
     
     // ! Mesh Subsampling 
     Mesh myMesh("../src/assets/models/cube.obj");
-    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints();
+    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.05f,60,100.0f, 1);
 
     
     // ! Particle Setup
@@ -70,6 +70,8 @@ int main() {
     ParticleRenderer particleRenderer;
     particleRenderer.init(particlesClass.getParticles());
 
+    // Initialize MPM simulation with existing particles
+    MPMSimulation mpmSim(particlesClass.getParticles());
     
     float deltaTime = 0.002f;
 
@@ -109,9 +111,8 @@ int main() {
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
     
 
-        // Update all particles at once
-        particlesClass.updateParticles(deltaTime, 4, 0.25f); // Using gridSize=4 and gridSpacing=0.25f
-
+        // Update simulation
+        mpmSim.step(deltaTime);
         particleRenderer.update(particlesClass.getParticles());
 
         // ! Draw Plane

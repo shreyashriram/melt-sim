@@ -7,23 +7,23 @@
 
 bool alreadyPrinted = false; //for debugging 
 
-MPMSimulation::MPMSimulation() 
-    : gridSize(4), gridSpacing(0.25f), 
-      youngsModulus(1.0e6f), poissonsRatio(0.3f) {
+MPMSimulation::MPMSimulation(std::vector<Particle>& particles) 
+    : particles(particles), youngsModulus(1.4e5f), poissonsRatio(0.2f), gridSize(64), gridSpacing(0.25f) {
+    initialize();
 }
 
 void MPMSimulation::initialize() {
-    // Initialize particles vector
-    particles.resize(100); // or whatever initial count you need
-    
-    // Initialize grid vector
     grid.resize(gridSize * gridSize * gridSize);
-    
     // Initialize grid nodes
-    for (auto& node : grid) {
-        node.mass = 0.0f;
-        node.velocity = glm::vec3(0.0f);
-        node.force = glm::vec3(0.0f);
+    for (int i = 0; i < gridSize; i++) {
+        for (int j = 0; j < gridSize; j++) {
+            for (int k = 0; k < gridSize; k++) {
+                int index = i * gridSize * gridSize + j * gridSize + k;
+                grid[index].velocity = glm::vec3(0.0f);
+                grid[index].force = glm::vec3(0.0f);
+                grid[index].mass = 0.0f;
+            }
+        }
     }
 }
 
@@ -60,14 +60,18 @@ void MPMSimulation::step(float dt) {
     
     updateGrid();
     transferGridToParticles();
-    Particles particlesClass;
-    particlesClass.updateParticles(1.0f / 60.0f, gridSize, gridSpacing);
+    for (auto& p : particles) {
+        p.velocity += p.force * dt;
+        p.position += p.velocity * dt;
+    }
 }
 
 void MPMSimulation::transferParticlesToGrid() { //STEP 1 IN MPM GUIDE
     for (const auto& p : particles) {
-        glm::vec3 cellIdx = (p.position / gridSpacing) - 0.5f; 
-        glm::ivec3 baseNode = glm::ivec3(floor(cellIdx)); //cell we will build the neighborhood around 
+        // Offset the position to handle negative coordinates
+        glm::vec3 offsetPos = p.position + glm::vec3(gridSize * gridSpacing * 0.5f);
+        glm::vec3 cellIdx = (offsetPos / gridSpacing) - 0.5f;
+        glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
         
         for (int i = 0; i < 3; ++i) { //bc we can't do 1.5 in an int loop, still loop through 3 cells and just adjust the index to be the correct neighborhood
             for (int j = 0; j < 3; ++j) {
@@ -79,7 +83,7 @@ void MPMSimulation::transferParticlesToGrid() { //STEP 1 IN MPM GUIDE
                     }
                     
                     int linearIdx = nodeIdx.x + nodeIdx.y * gridSize + nodeIdx.z * gridSize * gridSize; //finding the index in the array
-                    glm::vec3 nodePos = glm::vec3(nodeIdx) * gridSpacing; //converting from grid space to world space 
+                    glm::vec3 nodePos = (glm::vec3(nodeIdx) * gridSpacing) - glm::vec3(gridSize * gridSpacing * 0.5f);; //converting from grid space to world space 
                     
                     float weight = computeWeight(p.position, nodePos); //where we will implement B-spline
 
@@ -113,7 +117,8 @@ void MPMSimulation::updateGrid() { //STEP 2 IN THE MPM GUIDE
 
 void MPMSimulation::transferGridToParticles() { //STEP 3 IN MPM GUIDE (basically same as P2G but in opposite direction?)
     for (auto& p : particles) {
-        glm::vec3 cellIdx = (p.position / gridSpacing) - 0.5f;
+        glm::vec3 offsetPos = p.position + glm::vec3(gridSize * gridSpacing * 0.5f);
+        glm::vec3 cellIdx = (offsetPos / gridSpacing) - 0.5f;
         glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
         
         p.velocity = glm::vec3(0.0f);
@@ -128,7 +133,7 @@ void MPMSimulation::transferGridToParticles() { //STEP 3 IN MPM GUIDE (basically
                     }
                     
                     int linearIdx = nodeIdx.x + nodeIdx.y * gridSize + nodeIdx.z * gridSize * gridSize;
-                    glm::vec3 nodePos = glm::vec3(nodeIdx) * gridSpacing;
+                    glm::vec3 nodePos = (glm::vec3(nodeIdx) * gridSpacing) - glm::vec3(gridSize * gridSpacing * 0.5f);
                     
                     float weight = computeWeight(p.position, nodePos);
                     p.velocity += grid[linearIdx].velocity * weight;
