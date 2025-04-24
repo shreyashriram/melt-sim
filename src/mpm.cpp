@@ -13,8 +13,18 @@ MPMSimulation::MPMSimulation()
 }
 
 void MPMSimulation::initialize() {
-    Particle::initializeParticles();
-    Grid::initializeGrid();
+    // Initialize particles vector
+    particles.resize(100); // or whatever initial count you need
+    
+    // Initialize grid vector
+    grid.resize(gridSize * gridSize * gridSize);
+    
+    // Initialize grid nodes
+    for (auto& node : grid) {
+        node.mass = 0.0f;
+        node.velocity = glm::vec3(0.0f);
+        node.force = glm::vec3(0.0f);
+    }
 }
 
 
@@ -48,9 +58,10 @@ void MPMSimulation::step(float dt) {
    // alreadyPrinted = true;
         }*/
     
-    Grid::updateGrid();
+    updateGrid();
     transferGridToParticles();
-    Particle::updateParticles(1.0f / 60.0f);
+    Particles particlesClass;
+    particlesClass.updateParticles(1.0f / 60.0f, gridSize, gridSpacing);
 }
 
 void MPMSimulation::transferParticlesToGrid() { //STEP 1 IN MPM GUIDE
@@ -87,6 +98,18 @@ void MPMSimulation::transferParticlesToGrid() { //STEP 1 IN MPM GUIDE
         }
     }
 }
+
+void MPMSimulation::updateGrid() { //STEP 2 IN THE MPM GUIDE
+    //EVENTUALLY THIS WILL HAVE INTERNAL FORCES FROM STRESS, BOUNDARY CONDITIONS, DAMPING 
+
+    //apply gravity
+    for (auto& node : grid) {
+        if (node.mass > 0.0f) {
+            node.force += glm::vec3(0.0f, -9.8f, 0.0f) * node.mass;
+        }
+    }
+}
+
 
 void MPMSimulation::transferGridToParticles() { //STEP 3 IN MPM GUIDE (basically same as P2G but in opposite direction?)
     for (auto& p : particles) {

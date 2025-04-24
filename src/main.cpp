@@ -22,6 +22,8 @@ using Vector3 = Eigen::Matrix<scalar, 3, 1>;
 
 #include "particle.h"
 #include "particleRenderer.h"
+#include "grid.h"
+#include "mpm.h"
 
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
@@ -61,12 +63,12 @@ int main() {
 
     
     // ! Particle Setup
-    std::vector<Particle> particles;
+    Particles particlesClass;
     for (auto& pt : sampledPoints)
-        particles.emplace_back(glm::vec3(pt.x(), pt.y() + 1.0f, pt.z()));
+        particlesClass.getParticles().emplace_back(glm::vec3(pt.x(), pt.y() + 1.0f, pt.z()));
 
     ParticleRenderer particleRenderer;
-    particleRenderer.init(particles);
+    particleRenderer.init(particlesClass.getParticles());
 
     
     float deltaTime = 0.002f;
@@ -107,11 +109,10 @@ int main() {
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
     
 
-        for (auto& p : particles) {
-            p.update(deltaTime); 
-        }
+        // Update all particles at once
+        particlesClass.updateParticles(deltaTime, 4, 0.25f); // Using gridSize=4 and gridSpacing=0.25f
 
-        particleRenderer.update(particles);
+        particleRenderer.update(particlesClass.getParticles());
 
         // ! Draw Plane
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);

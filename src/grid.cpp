@@ -31,14 +31,3 @@ void Grid::initializeGrid() {
                   << grid[0].velocity.y << "," 
                   << grid[0].velocity.z << ")" << std::endl;*/
     }
-
-void Grid::updateGrid() { //STEP 2 IN THE MPM GUIDE
-    //EVENTUALLY THIS WILL HAVE INTERNAL FORCES FROM STRESS, BOUNDARY CONDITIONS, DAMPING 
-
-    //apply gravity
-    for (auto& node : grid) {
-        if (node.mass > 0.0f) {
-            node.force += glm::vec3(0.0f, -9.8f, 0.0f) * node.mass;
-        }
-    }
-}

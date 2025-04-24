@@ -12,12 +12,12 @@ class Grid {
     public: 
     void updateGrid();
     const std::vector<GridNode>& getGrid() const { return grid; }
-
-    private:
     int gridSize;
     float gridSpacing;
+
+    private:
     std::vector<GridNode> grid;
     void initializeGrid();
-}
+};
 
 

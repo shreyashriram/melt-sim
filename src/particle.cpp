@@ -1,6 +1,7 @@
 #include "particle.h"
+#include "grid.h"
 
-void Particle::initializeParticles() {
+void Particles::initializeParticles() {
     particles.clear(); 
     
     for (int i = 0; i < 5; i++) {
@@ -10,24 +11,23 @@ void Particle::initializeParticles() {
     }
 }
 
-void Particle::updateParticles(float dt) {
+void Particles::updateParticles(float dt, int gridSize, float gridSpacing) {
+    float gridBoundary = gridSize * gridSpacing;
+    
     for (auto& p : particles) {
-        // Update velocity
+        // Update velocity based on forces
         p.velocity += (p.force / p.mass) * dt;
         
         // Update position
         p.position += p.velocity * dt;
         
-        // Modified boundary conditions to match grid size
-        float gridBoundary = gridSize * gridSpacing;
-        
-        // Keep particles within [0, gridBoundary) instead of [-1, 1]
-        for (int i = 0; i < 3; ++i) {
+        // Simple boundary conditions
+        for (int i = 0; i < 3; i++) {
             if (p.position[i] < 0.0f) {
                 p.position[i] = 0.0f;
                 p.velocity[i] = 0.0f;
             }
-            if (p.position[i] >= gridBoundary) {
+            else if (p.position[i] >= gridBoundary) {
                 p.position[i] = gridBoundary - 0.001f; // Slightly inside boundary
                 p.velocity[i] = 0.0f;
             }
