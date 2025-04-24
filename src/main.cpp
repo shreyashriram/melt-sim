@@ -73,7 +73,7 @@ int main() {
     // Initialize MPM simulation with existing particles
     MPMSimulation mpmSim(particlesClass.getParticles());
     
-    float deltaTime = 0.002f;
+    float deltaTime = 0.02f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
@@ -124,12 +124,11 @@ int main() {
         particleRenderer.draw();
 
         // ! Draw Mesh
-        // // Draw cow on top of the cube (assumes cube height is 1.0)
-        glm::mat4 meshModel = glm::translate(model, glm::vec3(0.0f, 1.0f, 0.0f));
-        // // meshModel = glm::rotate(meshModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(meshModel));
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.2f, 0.5f, 1.0f);
-        myMesh.draw();
+        // glm::mat4 meshModel = glm::translate(model, glm::vec3(0.0f, 1.0f, 0.0f));
+        // // // meshModel = glm::rotate(meshModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
+        // glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(meshModel));
+        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.2f, 0.5f, 1.0f);
+        // myMesh.draw();
     
         glfwSwapBuffers(window);
         glfwPollEvents();

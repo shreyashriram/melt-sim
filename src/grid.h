@@ -10,7 +10,6 @@ struct GridNode {
 
 class Grid {
     public: 
-    void updateGrid();
     const std::vector<GridNode>& getGrid() const { return grid; }
     int gridSize;
     float gridSpacing;

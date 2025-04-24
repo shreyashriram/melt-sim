@@ -60,10 +60,11 @@ void MPMSimulation::step(float dt) {
     
     updateGrid();
     transferGridToParticles();
-    for (auto& p : particles) {
+    updateParticles(dt, gridSize, gridSpacing);
+    /*for (auto& p : particles) {
         p.velocity += p.force * dt;
         p.position += p.velocity * dt;
-    }
+    }*/
 }
 
 void MPMSimulation::transferParticlesToGrid() { //STEP 1 IN MPM GUIDE
@@ -140,6 +141,22 @@ void MPMSimulation::transferGridToParticles() { //STEP 3 IN MPM GUIDE (basically
                     p.force += grid[linearIdx].force * weight;
                 }
             }
+        }
+    }
+}
+
+void MPMSimulation::updateParticles(float dt, int gridSize, float gridSpacing) {
+    float gridBoundary = gridSize * gridSpacing;
+    
+    for (auto& p : particles) {
+        // Update velocity based on forces
+        p.velocity += glm::vec3(0.0f, -9.81f, 0.0f) * dt;
+        
+        // Update position
+        p.position += p.velocity * dt;
+        if(p.position.y < 0.0f) {
+            p.position.y = 0.0f;
+            p.velocity.y *= -0.5f;  // Bounce with energy loss
         }
     }
 }

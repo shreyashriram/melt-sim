@@ -18,7 +18,6 @@ struct Particle {
 
 class Particles {
     public:
-    void updateParticles(float dt, int gridSize, float gridSpacing);
     const std::vector<Particle>& getParticles() const { return particles; }
     std::vector<Particle>& getParticles() { return particles; }
 

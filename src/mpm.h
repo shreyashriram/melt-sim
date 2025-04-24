@@ -12,6 +12,7 @@ public:
     void step(float dt);
     void transferParticlesToGrid();
     void transferGridToParticles();
+    void updateParticles(float dt, int gridSize, float gridSpacing);
     void computeForces();
     void updateGrid();
 
