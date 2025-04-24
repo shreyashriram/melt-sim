@@ -1,5 +1,9 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 project(MeltSim VERSION 0.1.0)
+
+# Set policies
+cmake_policy(SET CMP0002 NEW)
+cmake_policy(SET CMP0077 NEW)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,6 +35,8 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/g-truc/glm.git
     GIT_TAG 0.9.9.8
 )
+set(GLM_TEST_ENABLE OFF CACHE BOOL "" FORCE)
+set(GLM_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
 # Glad
 set(GLAD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/glad")
@@ -44,7 +50,6 @@ endif()
 find_package(assimp REQUIRED)
 include_directories(/opt/homebrew/include)
 link_directories(/opt/homebrew/lib)
-
 
 # Add source files
 add_executable(MeltSim
@@ -60,12 +65,14 @@ add_executable(MeltSim
     src/shader_utils.cpp
     src/shader_utils.h
     src/leaven/surfaceSampler.cpp
-    # Add more source files as needed
-
     src/particle.cpp
     src/particle.h
     src/particleRenderer.cpp
     src/particleRenderer.h
+    src/mpm.cpp
+    src/mpm.h
+    src/grid.cpp
+    src/grid.h
 )
 
 # Now you can add include directories
