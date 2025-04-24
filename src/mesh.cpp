@@ -4,6 +4,10 @@
 #include <assimp/postprocess.h>
 #include <iostream>
 
+#include "leaven/surfaceSampler.h"
+#include "leaven/typedef.h"
+
+
 Mesh::Mesh(const std::string& path) {
     
     Assimp::Importer importer;
@@ -81,4 +85,37 @@ void Mesh::bind() const {
 
 void Mesh::unBind() const {
     glBindVertexArray(0);
+}
+
+std::vector<Vector3> Mesh::sampleSurfacePoints(
+    scalar minRadius,
+    unsigned int numTrials,
+    scalar initialDensity,
+    unsigned int distanceNorm
+) const {
+    using namespace leaven;
+
+    size_t numVertices = vertices.size() / 6;
+    Eigen::Matrix<scalar, 3, Eigen::Dynamic> eigenVertices(3, numVertices);
+
+    for (size_t i = 0; i < numVertices; ++i) {
+        eigenVertices.col(i) = Vector3(
+            vertices[i * 6 + 0],
+            vertices[i * 6 + 1],
+            vertices[i * 6 + 2]
+        );
+    }
+
+    size_t numTriangles = indices.size() / 3;
+    Eigen::Matrix<unsigned int, 3, Eigen::Dynamic> eigenIndices(3, numTriangles);
+    for (size_t i = 0; i < numTriangles; ++i) {
+        eigenIndices.col(i) = Eigen::Matrix<unsigned int, 3, 1>(
+            indices[i * 3 + 0],
+            indices[i * 3 + 1],
+            indices[i * 3 + 2]
+        );
+    }
+
+    SurfaceSampler sampler;
+    return sampler.sampleMesh(eigenVertices, eigenIndices, minRadius, numTrials, initialDensity, distanceNorm);
 }

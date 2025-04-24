@@ -61,6 +61,11 @@ add_executable(MeltSim
     src/shader_utils.h
     src/leaven/surfaceSampler.cpp
     # Add more source files as needed
+
+    src/particle.cpp
+    src/particle.h
+    src/particleRenderer.cpp
+    src/particleRenderer.h
 )
 
 # Now you can add include directories

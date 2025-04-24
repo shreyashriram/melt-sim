@@ -20,16 +20,12 @@ using namespace leaven;
 using scalar = float;
 using Vector3 = Eigen::Matrix<scalar, 3, 1>;
 
+#include "particle.h"
+#include "particleRenderer.h"
 
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
-struct Particle {
-    glm::vec3 position;
-    glm::vec3 velocity;
-
-    Particle(glm::vec3 pos) : position(pos), velocity(0.0f) {}
-};
 
 int main() {
     glfwInit();
@@ -56,111 +52,26 @@ int main() {
 
     unsigned int shaderProgram = createShaderProgram("../src/assets/shaders/vertex_shader.glsl", "../src/assets/shaders/fragment_shader.glsl");
 
-    // unsigned int floorVAO, floorVBO, floorEBO;
-    // setupFloor(floorVAO, floorVBO, floorEBO);
-
-    glEnable(GL_DEPTH_TEST);
-
-    // ! Mesh Subsampling 
-    Mesh myMesh("../src/assets/models/cow.obj");
 
     Plane myPlane(glm::vec3(0, 0, 0), 0, 10.0f);
     
+    // ! Mesh Subsampling 
+    Mesh myMesh("../src/assets/models/cube.obj");
+    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints();
 
-    size_t numVertices = myMesh.vertices.size() / 6;
-    Eigen::Matrix<scalar, 3, Eigen::Dynamic> eigenVertices(3, numVertices);
-
-    for (size_t i = 0; i < numVertices; ++i) {
-        float x = myMesh.vertices[i * 6 + 0];
-        float y = myMesh.vertices[i * 6 + 1];
-        float z = myMesh.vertices[i * 6 + 2];
-        eigenVertices.col(i) = Vector3(x, y, z);
-    }
     
-    // ? Debugging 
-    // std::cout << "Loaded " << numVertices << " vertices.\n";
-    // for (size_t i = 0; i < std::min(numVertices, size_t(5)); ++i) {
-    //     std::cout << "Vertex " << i << ": " << eigenVertices.col(i).transpose() << "\n";
-    // }
-
-
-    size_t numTriangles = myMesh.indices.size() / 3;
-    Eigen::Matrix<unsigned int, 3, Eigen::Dynamic> eigenIndices(3, numTriangles);
-
-    for (size_t i = 0; i < numTriangles; ++i) {
-        eigenIndices.col(i) = Eigen::Matrix<unsigned int, 3, 1>(
-         myMesh.indices[i * 3 + 0],
-         myMesh.indices[i * 3 + 1],
-         myMesh.indices[i * 3 + 2]
-        );
-    }
-    
-    // ? Debugging    
-    // std::cout << "Loaded " << numTriangles << " triangles.\n";
-    // for (size_t i = 0; i < std::min(numTriangles, size_t(5)); ++i) {
-    //     std::cout << "Triangle " << i << ": "
-    //             << eigenIndices(0, i) << ", "
-    //             << eigenIndices(1, i) << ", "
-    //             << eigenIndices(2, i) << "\n";
-    // }
-
-    scalar minRadius = 0.01f;             // spacing between samples (smaller = more points)
-    unsigned int numTrials = 60;         // number of sampling attempts
-    scalar initialDensity = 5.0f;        // how many initial points to generate
-    unsigned int distanceNorm = 2;       // 2 = Euclidean distance (common for 3D)
-
-    SurfaceSampler sampler;
-
-    std::vector<Vector3> sampledPoints = sampler.sampleMesh(
-        eigenVertices,
-        eigenIndices,
-        minRadius,
-        numTrials,
-        initialDensity,
-        distanceNorm
-    );
-
-    // ? Debugging
-    // std::cout << "Sampled " << sampledPoints.size() << " points from the cube mesh.\n";
-    // for (int i = 0; i < std::min(10, (int)sampledPoints.size()); ++i) {
-    //     std::cout << "Point " << i << ": " << sampledPoints[i].transpose() << "\n";
-    // }
-    
-    for (auto& pt : sampledPoints) {
-        pt.y() += 1.0f;
-    }
-
-    std::vector<float> pointData;
-    for (const auto& p : sampledPoints) {
-        pointData.push_back(p.x());
-        pointData.push_back(p.y());
-        pointData.push_back(p.z());
-    }
-
+    // ! Particle Setup
     std::vector<Particle> particles;
+    for (auto& pt : sampledPoints)
+        particles.emplace_back(glm::vec3(pt.x(), pt.y() + 1.0f, pt.z()));
 
-    for (const auto& pt : sampledPoints) {
-        glm::vec3 pos(pt.x(), pt.y(), pt.z());
-        particles.emplace_back(pos);
-    }
+    ParticleRenderer particleRenderer;
+    particleRenderer.init(particles);
 
+    
     float deltaTime = 0.002f;
 
-    unsigned int pointsVAO, pointsVBO;
-    glGenVertexArrays(1, &pointsVAO);
-    glGenBuffers(1, &pointsVBO);
-
-    glBindVertexArray(pointsVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, pointsVBO);
-    glBufferData(GL_ARRAY_BUFFER, pointData.size() * sizeof(float), pointData.data(), GL_STATIC_DRAW);
-
-    // layout (location = 0) = vec3 position
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    glBindVertexArray(0);
-
-
+    // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
 
     // View: camera level with cube/cow
@@ -169,7 +80,6 @@ int main() {
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
     glm::mat4 view = glm::lookAt(cameraPos, target, up);    
-
 
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
 
@@ -180,35 +90,7 @@ int main() {
 
     while (!glfwWindowShouldClose(window)) {
         glDisable(GL_CULL_FACE);
-        // !
-        for (auto& p : particles) {
-            // Apply gravity
-            p.velocity += glm::vec3(0.0f, -9.8f, 0.0f) * deltaTime;
-        
-            // Update position
-            p.position += p.velocity * deltaTime;
-        
-            // Floor collision
-            if (p.position.y < 0.0f) {
-                p.position.y = 0.0f;
-                p.velocity.y *= -0.5f; // bounce with damping
-            }
-        }
-
-        std::vector<float> updatedData;
-        for (const auto& p : particles) {
-            updatedData.push_back(p.position.x);
-            updatedData.push_back(p.position.y);
-            updatedData.push_back(p.position.z);
-        }
-
-        glBindBuffer(GL_ARRAY_BUFFER, pointsVBO);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, updatedData.size() * sizeof(float), updatedData.data());
-
-        
-        glBufferData(GL_ARRAY_BUFFER, pointData.size() * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
-
-        // !
+        glEnable(GL_DEPTH_TEST);
         processInput(window);
     
         glClearColor(0.6f, 0.8f, 0.9f, 1.0f);
@@ -224,34 +106,26 @@ int main() {
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightPos"), 1, glm::value_ptr(lightPos));
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
     
-        // Draw floor at origin
-        // glm::mat4 floorModel = glm::mat4(1.0f);
-        
-        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
-        // glBindVertexArray(floorVAO);
-        // glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
+        for (auto& p : particles) {
+            p.update(deltaTime); 
+        }
 
+        particleRenderer.update(particles);
+
+        // ! Draw Plane
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
         myPlane.draw();
 
-    
-        // Draw cube at origin
-        // glm::mat4 model = glm::mat4(1.0f); // Identity matrix
-        // glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
-        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.4f, 0.7f);
-        // myMesh.draw();
-    
-        glBindVertexArray(pointsVAO);
-        glPointSize(10.0f);  // increase for visibility
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 1.0f, 0.0f, 0.0f); // red glow
-        glDrawArrays(GL_POINTS, 0, sampledPoints.size());
+        // ! Draw Particles
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 1.0f, 0.0f, 0.0f); // red
+        particleRenderer.draw();
 
-
+        // ! Draw Mesh
         // // Draw cow on top of the cube (assumes cube height is 1.0)
-        glm::mat4 cowModel = glm::translate(model, glm::vec3(0.0f, 1.0f, 0.0f));
-        // cowModel = glm::rotate(cowModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(cowModel));
+        glm::mat4 meshModel = glm::translate(model, glm::vec3(0.0f, 1.0f, 0.0f));
+        // // meshModel = glm::rotate(meshModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(meshModel));
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.2f, 0.5f, 1.0f);
         myMesh.draw();
     
