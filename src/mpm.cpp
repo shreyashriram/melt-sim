@@ -14,7 +14,9 @@ MPMSimulation::MPMSimulation()
 void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
     Particle p;
     for (auto& pt : sampledPoints) {
-        p = Particle(glm::vec3(pt.x(), pt.y() + 1, pt.z()), glm::vec3(0.0f, 0.0f, 0.0f));
+
+        // ? Debugging: negative y velocity
+        p = Particle(glm::vec3(pt.x()+0.75f, pt.y()+0.75f, pt.z()-0.75f), glm::vec3(0.0f, -1.0f, 0.0f));
         particles.push_back(p);
     }
 }
@@ -32,100 +34,138 @@ void MPMSimulation::initializeParticles() {
 }
 
 void MPMSimulation::step(float dt) {
-    // reset grid
-    // for (auto& node : grid) {
-    //     node.velocity = glm::vec3(0.0f);
-    //     node.force = glm::vec3(0.0f);
-    //     node.mass = 0.0f;
-    // }
-    
-    //transferParticlesToGrid();
-    //updateGrid();
-    //transferGridToParticles();
 
-    updateParticles(dt, grid.size, grid.spacing);
+    // std::cout << "Step start -- dt: " << dt << std::endl;
+    // std::cout << "First particle pos: " << particles[0].position.y << ", vel: " << particles[0].velocity.y << std::endl;
+
+    // reset grid
+    for (auto& n : grid.nodes) {
+        n.velocity = glm::vec3(0.0f);
+        n.force = glm::vec3(0.0f);
+        n.mass = 0.0f;
+    }
+    
+    transferParticlesToGrid();
+    updateGrid(dt);
+    transferGridToParticles(dt);
+
+    // updateParticles(dt);
 }
 
-// void MPMSimulation::transferParticlesToGrid() { //STEP 1 IN MPM GUIDE
-//     for (const auto& p : particles) {
-//         // Offset the position to handle negative coordinates
-//         glm::vec3 offsetPos = p.position + glm::vec3(gridSize * gridSpacing * 0.5f);
-//         glm::vec3 cellIdx = (offsetPos / gridSpacing) - 0.5f;
-//         glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
-        
-//         for (int i = 0; i < 3; ++i) { //bc we can't do 1.5 in an int loop, still loop through 3 cells and just adjust the index to be the correct neighborhood
-//             for (int j = 0; j < 3; ++j) {
-//                 for (int k = 0; k < 3; ++k) {
-//                     glm::ivec3 nodeIdx = baseNode + glm::ivec3(i-1, j-1, k-1); //current node in the neighborhood
-                    
-//                     if (nodeIdx.x < 0 || nodeIdx.x >= gridSize || nodeIdx.y < 0 || nodeIdx.y >= gridSize || nodeIdx.z < 0 || nodeIdx.z >= gridSize) {
-//                         continue; //if not in the grid bounds, skip it 
-//                     }
-                    
-//                     int linearIdx = nodeIdx.x + nodeIdx.y * gridSize + nodeIdx.z * gridSize * gridSize; //finding the index in the array
-//                     glm::vec3 nodePos = (glm::vec3(nodeIdx) * gridSpacing) - glm::vec3(gridSize * gridSpacing * 0.5f);; //converting from grid space to world space 
-                    
-//                     float weight = computeWeight(p.position, nodePos); //where we will implement B-spline
+// STEP 1 IN MPM GUIDE
+void MPMSimulation::transferParticlesToGrid() { 
 
-//                     grid[linearIdx].mass += p.mass * weight; //setting the mass and velocity in the array 
-//                     grid[linearIdx].velocity += p.mass * p.velocity * weight;
-//                     //WE STILL NEED TO DO EITHER APIC OR MLS FOR PRESERVED MOMENTUM (INSTEAD OF LINEAR VELOCITY LIKE WE ARE RIGHT NOW)
-//                 }
-//             }
-//         }
-//     }
+    for (const auto& p : particles) {
+
+        // ? What is offset for
+        // Offset the position to handle negative coordinates
+        // glm::vec3 offsetPos = p.position + glm::vec3(grid.size * grid.spacing * 0.5f);
+        
+        glm::vec3 cellIdx = (p.position / grid.spacing) - 0.5f;
+        
+        // bottom left node relative to particle
+        glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
+        
+        // Loop through the 3x3x3 neighborhood using -1 to 1 range directly
+        // 1 node apart.
+        for (int i = -1; i <= 1; ++i) {
+            for (int j = -1; j <= 1; ++j) {
+                for (int k = -1; k <= 1; ++k) {
+                    glm::ivec3 nodeIdx = baseNode + glm::ivec3(i, j, k); // Much cleaner - direct offset
+                    
+
+                    if (nodeIdx.x < 0 || nodeIdx.x >= grid.size || 
+                        nodeIdx.y < 0 || nodeIdx.y >= grid.size || 
+                        nodeIdx.z < 0 || nodeIdx.z >= grid.size) {
+                        continue; // if not in the grid bounds, skip it 
+                    }
+                    
+                    int linearIdx = nodeIdx.x + (nodeIdx.y * grid.size) + (nodeIdx.z * grid.size * grid.size); // finding the index in the <node>
+                    
+
+                    // node(0, 0, 0) is at (0, 0, 0)w
+                    glm::vec3 nodePos = (glm::vec3(nodeIdx) * grid.spacing);
+                    
+                    float weight = computeWeight(p.position, nodePos); // where we will implement B-spline
     
-//     //have to normalize velocity to convert accumulated momentum back to velocity
-//     for (auto& node : grid) {
-//         if (node.mass > 0.0f) {
-//             node.velocity /= node.mass;
-//         }
-//     }
-// }
-
-// void MPMSimulation::updateGrid() { //STEP 2 IN THE MPM GUIDE
-//     //EVENTUALLY THIS WILL HAVE INTERNAL FORCES FROM STRESS, BOUNDARY CONDITIONS, DAMPING 
-
-//     //apply gravity
-//     for (auto& node : grid) {
-//         if (node.mass > 0.0f) {
-//             node.force += glm::vec3(0.0f, -9.8f, 0.0f) * node.mass;
-//         }
-//     }
-// }
-
-
-// void MPMSimulation::transferGridToParticles() { //STEP 3 IN MPM GUIDE (basically same as P2G but in opposite direction?)
-//     for (auto& p : particles) {
-//         glm::vec3 offsetPos = p.position + glm::vec3(gridSize * gridSpacing * 0.5f);
-//         glm::vec3 cellIdx = (offsetPos / gridSpacing) - 0.5f;
-//         glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
-        
-//         p.velocity = glm::vec3(0.0f);
-//         p.force = glm::vec3(0.0f);
-        
-//         for (int i = 0; i < 3; ++i) {
-//             for (int j = 0; j < 3; ++j) {
-//                 for (int k = 0; k < 3; ++k) {
-//                     glm::ivec3 nodeIdx = baseNode + glm::ivec3(i-1, j-1, k-1);
-//                     if (nodeIdx.x < 0 || nodeIdx.x >= gridSize || nodeIdx.y < 0 || nodeIdx.y >= gridSize ||nodeIdx.z < 0 || nodeIdx.z >= gridSize) {
-//                         continue;
-//                     }
+                    grid.nodes[linearIdx].mass += p.mass * weight; // setting the mass and velocity in the array 
+                    grid.nodes[linearIdx].velocity += p.mass * p.velocity * weight;
                     
-//                     int linearIdx = nodeIdx.x + nodeIdx.y * gridSize + nodeIdx.z * gridSize * gridSize;
-//                     glm::vec3 nodePos = (glm::vec3(nodeIdx) * gridSpacing) - glm::vec3(gridSize * gridSpacing * 0.5f);
-                    
-//                     float weight = computeWeight(p.position, nodePos);
-//                     p.velocity += grid[linearIdx].velocity * weight;
-//                     p.force += grid[linearIdx].force * weight;
-//                 }
-//             }
-//         }
-//     }
-// }
+                    // WE STILL NEED TO DO EITHER APIC OR MLS FOR PRESERVED MOMENTUM (INSTEAD OF LINEAR VELOCITY LIKE WE ARE RIGHT NOW)
+                }
+            }
+        }
+    }
+    
+    //have to normalize velocity to convert accumulated momentum back to velocity
+    for (auto& node : grid.nodes) {
+        if (node.mass > 0.0f) {
+            node.velocity /= node.mass;
+        }
+    }
 
-void MPMSimulation::updateParticles(float dt, int gridSize, float gridSpacing) {
-    float gridBoundary = gridSize * gridSpacing;
+    float totalMass = 0.0f;
+    for (const auto& n : grid.nodes) {
+        totalMass += n.mass;
+    }
+    std::cout << "Total grid mass after P2G: " << totalMass << std::endl;
+
+    for (int i = 0; i < grid.nodes.size(); ++i) {
+        if (grid.nodes[i].mass > 0.0f) {
+            std::cout << "Node " << i << " vel.y: " << grid.nodes[i].velocity.y << std::endl;
+        }
+    }
+}
+
+// STEP 2 IN THE MPM GUIDE
+void MPMSimulation::updateGrid(float dt ) { 
+    //EVENTUALLY THIS WILL HAVE INTERNAL FORCES FROM STRESS, BOUNDARY CONDITIONS, DAMPING 
+    for (auto& node : grid.nodes) {
+        if (node.mass > 0.0f) {
+            // Apply gravity
+            node.force += glm::vec3(0.0f, -9.8f, 0.0f) * node.mass;
+
+            
+            node.velocity += (node.force / node.mass) * dt;  // <-- Add this line
+        }
+    }
+}
+
+// STEP 3 IN MPM GUIDE (basically same as P2G but in opposite direction?)
+void MPMSimulation::transferGridToParticles(float dt) { 
+    for (auto& p : particles) {
+       // glm::vec3 offsetPos = p.position + glm::vec3(grid.size * grid.spacing * 0.5f);
+        glm::vec3 cellIdx = (p.position / grid.spacing) - 0.5f;
+        glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
+        
+        p.velocity = glm::vec3(0.0f);
+        p.force = glm::vec3(0.0f);
+        
+        for (int i = -1; i <= 1; ++i) {
+            for (int j = -1; j <= 1; ++j) {
+                for (int k = -1; k <= 1; ++k) {
+                    glm::ivec3 nodeIdx = baseNode + glm::ivec3(i, j, k);
+                    if (nodeIdx.x < 0 || nodeIdx.x >= grid.size || nodeIdx.y < 0 || nodeIdx.y >= grid.size ||nodeIdx.z < 0 || nodeIdx.z >= grid.size) {
+                        continue;
+                    }
+                    
+                    int linearIdx = nodeIdx.x + nodeIdx.y * grid.size + nodeIdx.z * grid.size * grid.size;
+                    glm::vec3 nodePos = (glm::vec3(nodeIdx) * grid.spacing) - glm::vec3(grid.size * grid.spacing);
+                    
+                    float weight = computeWeight(p.position, nodePos);
+                    p.velocity += grid.nodes[linearIdx].velocity * weight;
+                    p.force += grid.nodes[linearIdx].force * weight;
+                }
+            }
+        }
+        
+        p.position += p.velocity * dt;
+    }
+}
+
+
+void MPMSimulation::updateParticles(float dt) {
+    float gridBoundary = grid.size * grid.spacing;
     
     for (auto& p : particles) {
         // Update velocity based on forces
@@ -140,14 +180,29 @@ void MPMSimulation::updateParticles(float dt, int gridSize, float gridSpacing) {
     }
 }
 
-// float MPMSimulation::computeWeight(const glm::vec3& particlePos, const glm::vec3& nodePos) { 
-//     //RIGHT NOW WE ARE DOING LINEAR, WE NEED TO IMPLEMENT B-SPLINE HERE
-//     glm::vec3 d = (particlePos - nodePos) / gridSpacing;
-//     float wx = std::max(0.0f, 1.0f - std::abs(d.x));
-//     float wy = std::max(0.0f, 1.0f - std::abs(d.y));
-//     float wz = std::max(0.0f, 1.0f - std::abs(d.z));
-//     return wx * wy * wz;
-// }
+float MPMSimulation::computeWeight(const glm::vec3& particlePos, const glm::vec3& nodePos) { 
+    //RIGHT NOW WE ARE DOING LINEAR, WE NEED TO IMPLEMENT B-SPLINE HERE
+    glm::vec3 diff = (particlePos - nodePos) / grid.spacing; // Normalize distance by grid spacing
+    glm::vec3 w;
+    
+    for (int i = 0; i < 3; ++i) {
+        
+        float d = fabs(diff[i]);
+        
+        if (d < 0.5f) {
+            w[i] = 0.75f - d * d;
+        }
+        else if (d < 1.5f) {
+            float t = 1.5f - d;
+            w[i] = 0.5f * t * t;
+        } 
+        else {
+            w[i] = 0.0f;
+        }
+    }
+
+    return w.x * w.y * w.z;  // Tensor product of 1D kernels
+}
 
 // glm::vec3 MPMSimulation::computeWeightGradient(const glm::vec3& particlePos, const glm::vec3& nodePos) {
 //     //NEED TO USE THIS FUNCTION LATER ON IN APIC/MLS AND B-SPLINE CALCULATIONS
