@@ -15,19 +15,4 @@ void Grid::initializeGrid() {
         node.mass = 0.0f;
     }
     
-    /*std::cout << "===== Grid Initialization Debug =====" << std::endl;
-    std::cout << "Grid size: " << gridSize << "x" << gridSize << "x" << gridSize 
-              << " (" << grid.size() << " total nodes)" << std::endl;
-    std::cout << "Cell spacing: " << gridSpacing << std::endl;
-    std::cout << "Grid physical dimensions: " 
-              << gridSize * gridSpacing << "x" 
-              << gridSize * gridSpacing << "x"
-              << gridSize * gridSpacing << std::endl;
-              
-    // Print a few sample grid nodes
-    if (grid.size() > 0) {
-        std::cout << "Sample node (0,0,0): mass=" << grid[0].mass 
-                  << ", vel=(" << grid[0].velocity.x << "," 
-                  << grid[0].velocity.y << "," 
-                  << grid[0].velocity.z << ")" << std::endl;*/
     }

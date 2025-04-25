@@ -7,64 +7,43 @@
 
 bool alreadyPrinted = false; //for debugging 
 
-MPMSimulation::MPMSimulation(std::vector<Particle>& particles) 
-    : particles(particles), youngsModulus(1.4e5f), poissonsRatio(0.2f), gridSize(64), gridSpacing(0.25f) {
-    initialize();
+MPMSimulation::MPMSimulation() 
+    : youngsModulus(1.4e5f), poissonsRatio(0.2f), gridSize(64), gridSpacing(0.25f) {
 }
 
-void MPMSimulation::initialize() {
-    grid.resize(gridSize * gridSize * gridSize);
-    // Initialize grid nodes
-    for (int i = 0; i < gridSize; i++) {
-        for (int j = 0; j < gridSize; j++) {
-            for (int k = 0; k < gridSize; k++) {
-                int index = i * gridSize * gridSize + j * gridSize + k;
-                grid[index].velocity = glm::vec3(0.0f);
-                grid[index].force = glm::vec3(0.0f);
-                grid[index].mass = 0.0f;
-            }
-        }
+void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
+    Particle p;
+    for (auto& pt : sampledPoints) {
+        p = Particle(glm::vec3(pt.x(), pt.y() + 1, pt.z()), glm::vec3(0.0f, 0.0f, 0.0f));
+        particles.push_back(p);
+    }
+}
+
+void MPMSimulation::initializeParticles() {
+    particles.clear(); 
+    
+    Particle p;  //declare the Particle variable
+    for (int i = 0; i < 5; i++) {
+        p = Particle(glm::vec3(i*0.2f, 0.5f, 0.0f), glm::vec3(0.0f, i*0.05f, 0.0f));
+
+        particles.push_back(p);
     }
 }
 
 
 void MPMSimulation::step(float dt) {
-    //reset grid
-    for (auto& node : grid) {
-        node.velocity = glm::vec3(0.0f);
-        node.force = glm::vec3(0.0f);
-        node.mass = 0.0f;
-    }
+    // reset grid
+    // for (auto& node : grid) {
+    //     node.velocity = glm::vec3(0.0f);
+    //     node.force = glm::vec3(0.0f);
+    //     node.mass = 0.0f;
+    // }
     
-    transferParticlesToGrid();
-    /*if (alreadyPrinted == false){
-    std::cout << "===== Grid After Particle Transfer =====" << std::endl;
-    for (int z = 0; z < gridSize; ++z) {
-        for (int y = 0; y < gridSize; ++y) {
-            for (int x = 0; x < gridSize; ++x) {
-                int linearIdx = x + y * gridSize + z * gridSize * gridSize;
-                GridNode& node = grid[linearIdx];
-                //if (node.mass > 0.0f) {  // Only print nodes with mass
-                    std::cout << "Node (" << x << "," << y << "," << z << "): "
-                              << "mass=" << node.mass 
-                              << ", vel=(" << node.velocity.x << "," 
-                              << node.velocity.y << "," 
-                              << node.velocity.z << ")" << std::endl;
-                //}
-            }
-        }
-    }
-    std::cout << "===================================" << std::endl;
-   // alreadyPrinted = true;
-        }*/
-    
-    updateGrid();
-    transferGridToParticles();
+    //transferParticlesToGrid();
+    //updateGrid();
+    //transferGridToParticles();
+
     updateParticles(dt, gridSize, gridSpacing);
-    /*for (auto& p : particles) {
-        p.velocity += p.force * dt;
-        p.position += p.velocity * dt;
-    }*/
 }
 
 void MPMSimulation::transferParticlesToGrid() { //STEP 1 IN MPM GUIDE

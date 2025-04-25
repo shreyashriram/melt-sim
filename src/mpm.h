@@ -4,11 +4,17 @@
 #include <glm/glm.hpp>
 #include "particle.h"
 #include "grid.h"
+#include <Eigen/Dense>
+
+using scalar = float;
+using Vector3 = Eigen::Matrix<scalar, 3, 1>;
 
 class MPMSimulation {
 public:
-    MPMSimulation(std::vector<Particle>& particles);
-    void initialize();
+    std::vector<Particle> particles;
+    MPMSimulation();
+    void addMeshParticles(std::vector<Vector3> sampledPoints);
+    void initializeParticles();
     void step(float dt);
     void transferParticlesToGrid();
     void transferGridToParticles();
@@ -20,8 +26,7 @@ private:
     float youngsModulus;
     float poissonsRatio;
     int gridSize;
-    float gridSpacing;
-    std::vector<Particle>& particles;  // Reference to particles from main
+    float gridSpacing;  // Reference to particles from main
     std::vector<GridNode> grid;
 
     float computeWeight(const glm::vec3& particlePos, const glm::vec3& nodePos);

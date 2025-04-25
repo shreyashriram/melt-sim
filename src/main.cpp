@@ -62,18 +62,15 @@ int main() {
     std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.05f,60,100.0f, 1);
 
     
+    MPMSimulation mpmSim;
+    mpmSim.addMeshParticles(sampledPoints);
     // ! Particle Setup
-    Particles particlesClass;
-    for (auto& pt : sampledPoints)
-        particlesClass.getParticles().emplace_back(glm::vec3(pt.x(), pt.y() + 1.0f, pt.z()));
 
     ParticleRenderer particleRenderer;
-    particleRenderer.init(particlesClass.getParticles());
+    particleRenderer.init(mpmSim.particles);
 
-    // Initialize MPM simulation with existing particles
-    MPMSimulation mpmSim(particlesClass.getParticles());
     
-    float deltaTime = 0.02f;
+    float deltaTime = 0.003f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
@@ -110,10 +107,9 @@ int main() {
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightPos"), 1, glm::value_ptr(lightPos));
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
     
-
         // Update simulation
         mpmSim.step(deltaTime);
-        particleRenderer.update(particlesClass.getParticles());
+        particleRenderer.update(mpmSim.particles);
 
         // ! Draw Plane
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);

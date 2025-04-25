@@ -65,7 +65,7 @@ add_executable(MeltSim
     src/shader_utils.cpp
     src/shader_utils.h
     src/leaven/surfaceSampler.cpp
-    src/particle.cpp
+    # src/particle.cpp
     src/particle.h
     src/particleRenderer.cpp
     src/particleRenderer.h
