@@ -16,6 +16,7 @@ public:
 private:
     int    gridSize;
     float  gridSpacing;
-    uint VAO, VBO;
+    uint VAO, VBO, massVBO;  // Added massVBO for mass data
     std::vector<glm::vec3> positions;
+    std::vector<float> masses;  // Added vector to store mass values
 };

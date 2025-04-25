@@ -52,9 +52,9 @@ int main() {
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
-
+    // Linking shaders
     unsigned int shaderProgram = createShaderProgram("../src/assets/shaders/vertex_shader.glsl", "../src/assets/shaders/fragment_shader.glsl");
-
+    unsigned int gridShaderProgram = createShaderProgram(    "../src/assets/shaders/grid_vertex_shader.glsl", "../src/assets/shaders/grid_fragment_shader.glsl");
 
     Plane myPlane(glm::vec3(0, 0, 0), 0, 10.0f);
     
@@ -117,8 +117,9 @@ int main() {
 mpmSim.step(deltaTime);
 
     // draw grid‐node debug
-    gridRenderer.update(mpmSim.getGridNodes());
-    gridRenderer.draw(model, view, projection, shaderProgram);
+    gridRenderer.update(mpmSim.getGridNodes()); 
+    gridRenderer.draw(model, view, projection, gridShaderProgram);  
+
 
     // draw particles
     particleRenderer.update(mpmSim.particles);        
