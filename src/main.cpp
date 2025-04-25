@@ -24,6 +24,7 @@ using Vector3 = Eigen::Matrix<scalar, 3, 1>;
 #include "particleRenderer.h"
 #include "grid.h"
 #include "mpm.h"
+#include "gridRenderer.h"
 
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
@@ -71,6 +72,9 @@ int main() {
     ParticleRenderer particleRenderer;
     particleRenderer.init(mpmSim.particles);
 
+    // ! Grid Setup
+    GridRenderer gridRenderer(mpmSim.getGridSize(), mpmSim.getGridSpacing());
+    gridRenderer.init();
     
     float deltaTime = 0.0045f;
 
@@ -109,9 +113,16 @@ int main() {
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightPos"), 1, glm::value_ptr(lightPos));
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
     
-        // Update simulation
-        mpmSim.step(deltaTime);
-        particleRenderer.update(mpmSim.particles);
+// single-step pipeline
+mpmSim.step(deltaTime);
+
+    // draw grid‐node debug
+    gridRenderer.update(mpmSim.getGridNodes());
+    gridRenderer.draw(model, view, projection, shaderProgram);
+
+    // draw particles
+    particleRenderer.update(mpmSim.particles);        
+
 
         // ! Draw Plane
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
