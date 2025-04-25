@@ -175,7 +175,7 @@ std::vector<Vector3> Mesh::sampleVolumePoints(unsigned int numPoints) const {
 }
 
 //Uses the Möller–Trumbore algorithm for ray-triangle intersection
-// https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_algorithm
+// https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
 // This function checks if a ray intersects a triangle in 3D space
 // orig: ray origin
 // dir: ray direction
