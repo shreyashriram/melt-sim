@@ -38,11 +38,11 @@ void drawAxes(GLuint shaderProgram, float axisLength = 10.0f) {
     if (!initialized) {
         glm::vec3 axes[] = {
             // X axis (red)
-            glm::vec3(-(axisLength), 0.0f, 0.0f), glm::vec3(axisLength, 0.0f, 0.0f),
+            glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(axisLength, 0.0f, 0.0f),
             // Y axis (green)
-            glm::vec3(0.0f, -(axisLength), 0.0f), glm::vec3(0.0f, axisLength, 0.0f),
+            glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, axisLength, 0.0f),
             // Z axis (blue)
-            glm::vec3(0.0f, 0.0f, -(axisLength)), glm::vec3(0.0f, 0.0f, axisLength)
+            glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, axisLength)
         };
 
         glGenVertexArrays(1, &vao);
@@ -81,7 +81,6 @@ void drawAxes(GLuint shaderProgram, float axisLength = 10.0f) {
     glBindVertexArray(0);
 }
 
-
 void drawGridLines(GLuint shaderProgram, int gridSize = 5, float spacing = 0.25f) {
     static GLuint vao = 0, vbo = 0;
     static bool initialized = false;
@@ -89,32 +88,31 @@ void drawGridLines(GLuint shaderProgram, int gridSize = 5, float spacing = 0.25f
     if (!initialized) {
         std::vector<glm::vec3> lines;
 
-        float start = 0.0f; // bottom-left-front at (0,0,0)
-        float end = gridSize * spacing;
+        float start = 0.0f;                  // Min Corner (0,0,0)
+        float end = gridSize * spacing;       // Max Corner (1.25,1.25,1.25)
 
-        // Generate lines
         for (int i = 0; i < gridSize + 1; ++i) {
-            float offset = i * spacing + start;
+            float offset = i * spacing;
 
             // Y-Z planes (lines along X)
             for (int j = 0; j < gridSize + 1; ++j) {
-                float y = j * spacing + start;
-                lines.emplace_back(start, y, start - i * spacing); // notice start - offset (for Z)
-                lines.emplace_back(end,   y, start - i * spacing);
+                float y = j * spacing;
+                lines.emplace_back(start, y, offset); // growing +Z
+                lines.emplace_back(end,   y, offset);
             }
 
             // X-Z planes (lines along Y)
             for (int j = 0; j < gridSize + 1; ++j) {
-                float x = j * spacing + start;
-                lines.emplace_back(x, start, start - i * spacing);
-                lines.emplace_back(x, end,   start - i * spacing);
+                float x = j * spacing;
+                lines.emplace_back(x, start, offset); // growing +Z
+                lines.emplace_back(x, end,   offset);
             }
 
             // X-Y planes (lines along Z)
             for (int j = 0; j < gridSize + 1; ++j) {
-                float x = j * spacing + start;
-                lines.emplace_back(x, offset, start);
-                lines.emplace_back(x, offset, start - end);
+                float x = j * spacing;
+                lines.emplace_back(x, offset, start); // growing +Y
+                lines.emplace_back(x, offset, end);
             }
         }
 
@@ -138,11 +136,9 @@ void drawGridLines(GLuint shaderProgram, int gridSize = 5, float spacing = 0.25f
     glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.6f, 0.6f, 0.6f); // gray lines
 
     glBindVertexArray(vao);
-    glDrawArrays(GL_LINES, 0, (gridSize + 1) * (gridSize + 1) * 3 * 2);
+    glDrawArrays(GL_LINES, 0, (gridSize + 1) * (gridSize + 1) * 3 * 2); // 3 planes, 2 vertices per line
     glBindVertexArray(0);
 }
-
-
 
 int main() {
     glfwInit();
@@ -191,8 +187,8 @@ int main() {
     glm::mat4 model = glm::mat4(1.0f);
 
     // View: camera level with cube/cow
-    glm::vec3 cameraPos = glm::vec3(-0.5f, 2.0f, 2.5f);  // higher Y
-    glm::vec3 target = glm::vec3(0.5f, 0.5f, -0.5f);     // still looking at the cow
+    glm::vec3 cameraPos = glm::vec3(-0.5f, 2.0f, -2.5f);  // higher Y
+    glm::vec3 target = glm::vec3(0.5f, 0.5f, 0.5f);     // still looking at the cow
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
     glm::mat4 view = glm::lookAt(cameraPos, target, up);    
@@ -223,11 +219,12 @@ int main() {
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
     
         // Update simulation
-        // mpmSim.step(deltaTime);
+        mpmSim.step(deltaTime);
         particleRenderer.update(mpmSim.particles);
+        
+        // ! Util Drawing 
         drawGridLines(shaderProgram);
         drawAxes(shaderProgram, 10.0f);
-
 
         // ! Draw Plane
         // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
@@ -238,9 +235,6 @@ int main() {
         particleRenderer.draw();
 
         // ! Draw Mesh
-        // glm::mat4 meshModel = glm::translate(model, glm::vec3(0.0f, 1.0f, 0.0f));
-        // // // meshModel = glm::rotate(meshModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
-        // glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(meshModel));
         // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.2f, 0.5f, 1.0f);
         // myMesh.draw();
     
