@@ -76,7 +76,7 @@ int main() {
     GridRenderer gridRenderer(mpmSim.getGridSize(), mpmSim.getGridSpacing());
     gridRenderer.init();
     
-    float deltaTime = 0.0045f;
+    float deltaTime = 0.01f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);

@@ -30,7 +30,7 @@ public:
     void transferGridToParticles();
     void updateParticles(float dt, int gridSize, float gridSpacing);
     void computeForces();
-    void updateGrid();
+    void updateGrid(float dt);
 
 private:
     float youngsModulus;
