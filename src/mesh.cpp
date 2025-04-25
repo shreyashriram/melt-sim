@@ -119,3 +119,94 @@ std::vector<Vector3> Mesh::sampleSurfacePoints(
     SurfaceSampler sampler;
     return sampler.sampleMesh(eigenVertices, eigenIndices, minRadius, numTrials, initialDensity, distanceNorm);
 }
+
+// Volume sampling using ray casting
+// This function samples points inside the volume of the mesh using a ray-casting method.
+// It generates random points within the bounding box of the mesh and checks if they are inside the mesh
+// by casting a ray in a fixed direction (e.g., +x direction) and counting the number of intersections with the mesh triangles.
+// If the number of intersections is odd, the point is inside the mesh; if even, it's outside.
+// The function returns a vector of sampled points inside the mesh volume.
+std::vector<Vector3> Mesh::sampleVolumePoints(unsigned int numPoints) const {
+    std::vector<Vector3> volumePoints;
+
+    // Step 1: Compute bounding box of the mesh
+    Vector3 minBB = Vector3::Constant(std::numeric_limits<float>::max());
+    Vector3 maxBB = Vector3::Constant(std::numeric_limits<float>::lowest());
+
+    for (size_t i = 0; i < vertices.size(); i += 6) {
+        Vector3 v(vertices[i], vertices[i + 1], vertices[i + 2]);
+        minBB = minBB.cwiseMin(v);
+        maxBB = maxBB.cwiseMax(v);
+    }
+
+    // Step 2: Flatten triangle vertices
+    std::vector<Vector3> triangleVertices;
+    for (size_t i = 0; i < indices.size(); ++i) {
+        size_t idx = indices[i] * 6;
+        triangleVertices.emplace_back(vertices[idx], vertices[idx + 1], vertices[idx + 2]);
+    }
+
+    // Step 3: Sample random points and use ray casting
+    std::default_random_engine rng(std::random_device{}());
+    std::uniform_real_distribution<float> distX(minBB.x(), maxBB.x());
+    std::uniform_real_distribution<float> distY(minBB.y(), maxBB.y());
+    std::uniform_real_distribution<float> distZ(minBB.z(), maxBB.z());
+
+    while (volumePoints.size() < numPoints) {
+        Vector3 p(distX(rng), distY(rng), distZ(rng));
+        Vector3 dir(1.0f, 0.0f, 0.0f); // Ray in +x direction
+
+        int intersections = 0;
+        for (size_t i = 0; i < triangleVertices.size(); i += 3) {
+            if (rayIntersectsTriangle(p, dir,
+                triangleVertices[i],
+                triangleVertices[i + 1],
+                triangleVertices[i + 2])) {
+                ++intersections;
+            }
+        }
+
+        if (intersections % 2 == 1) {
+            volumePoints.push_back(p); // Inside mesh
+        }
+    }
+
+    return volumePoints;
+}
+
+//Uses the Möller–Trumbore algorithm for ray-triangle intersection
+// https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
+// This function checks if a ray intersects a triangle in 3D space
+// orig: ray origin
+// dir: ray direction
+// v0, v1, v2: vertices of the triangle
+// Returns true if the ray intersects the triangle, false otherwise
+bool Mesh::rayIntersectsTriangle(
+    const Vector3& orig,
+    const Vector3& dir,
+    const Vector3& v0,
+    const Vector3& v1,
+    const Vector3& v2
+) const {
+    const float EPSILON = 1e-6f;
+    Vector3 edge1 = v1 - v0;
+    Vector3 edge2 = v2 - v0;
+    Vector3 h = dir.cross(edge2);
+    float a = edge1.dot(h);
+    if (std::fabs(a) < EPSILON)
+        return false;
+
+    float f = 1.0f / a;
+    Vector3 s = orig - v0;
+    float u = f * s.dot(h);
+    if (u < 0.0f || u > 1.0f)
+        return false;
+
+    Vector3 q = s.cross(edge1);
+    float v = f * dir.dot(q);
+    if (v < 0.0f || u + v > 1.0f)
+        return false;
+
+    float t = f * edge2.dot(q);
+    return t > EPSILON;
+}

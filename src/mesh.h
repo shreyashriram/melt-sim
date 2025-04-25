@@ -6,6 +6,8 @@
 #include <glad/glad.h>
 
 #include <Eigen/Dense>
+#include <limits>
+#include <random>
 
 using scalar = float;
 using Vector3 = Eigen::Matrix<scalar, 3, 1>;
@@ -29,6 +31,11 @@ public:
         unsigned int distanceNorm = 2
     ) const;
 
+        // Samples points inside the volume using point-in-mesh testing
+        std::vector<Vector3> sampleVolumePoints(
+            unsigned int numPoints = 1000
+        ) const;
+
     // Future extensibility:
     // glm::mat4 transform;
     // std::string name;
@@ -38,7 +45,14 @@ private:
     
     unsigned int VAO, VBO, EBO;
     void setupBuffers();
-    
+        // Internal helper for ray-triangle intersection (used for volume sampling)
+    bool rayIntersectsTriangle(
+        const Vector3& orig,
+        const Vector3& dir,
+        const Vector3& v0,
+        const Vector3& v1,
+        const Vector3& v2
+    ) const;
 };
 
 #endif
