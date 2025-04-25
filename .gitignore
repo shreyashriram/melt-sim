@@ -1,6 +1,7 @@
 # Build directories
 build/
 out/
+external/eigen-3.4.0
 cmake-build-*/
 
 # IDE files

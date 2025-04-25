@@ -1,5 +1,6 @@
 #include "plane.h"
 #include <glm/gtc/matrix_transform.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/rotate_vector.hpp>
 #include <glad/glad.h>
 #include <vector>
@@ -31,8 +32,8 @@ void Plane::generatePlane() {
     for (auto& v : temp ) {
         v = glm::rotateZ(v, radians); // rotate along z axis "roll"
         v += center;
-    
     };
+    
     vertices = temp;
 
     // normals array 
