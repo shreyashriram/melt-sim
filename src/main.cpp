@@ -58,10 +58,8 @@ int main() {
     Plane myPlane(glm::vec3(0, 0, 0), 0, 10.0f);
     
     // ! Mesh Subsampling 
-    Mesh myMesh("../src/assets/models/cube.obj");
-    // std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.05f,60,100.0f, 1);
-    std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
-    std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
+    Mesh myMesh("../src/assets/models/cow.obj");
+    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.05f,60,100.0f, 1);
 
     
     MPMSimulation mpmSim;

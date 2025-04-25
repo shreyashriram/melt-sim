@@ -38,12 +38,13 @@ void MPMSimulation::step(float dt) {
     //     node.force = glm::vec3(0.0f);
     //     node.mass = 0.0f;
     // }
-    updateParticles(dt, gridSize, gridSpacing);
+    
     //transferParticlesToGrid();
     //updateGrid();
     //transferGridToParticles();
 
 
+    updateParticles(dt, gridSize, gridSpacing);
 }
 
 void MPMSimulation::transferParticlesToGrid() { //STEP 1 IN MPM GUIDE
