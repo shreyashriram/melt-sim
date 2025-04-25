@@ -43,6 +43,7 @@ void MPMSimulation::step(float dt) {
     //updateGrid();
     //transferGridToParticles();
 
+
     updateParticles(dt, gridSize, gridSpacing);
 }
 

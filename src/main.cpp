@@ -58,7 +58,7 @@ int main() {
     Plane myPlane(glm::vec3(0, 0, 0), 0, 10.0f);
     
     // ! Mesh Subsampling 
-    Mesh myMesh("../src/assets/models/cube.obj");
+    Mesh myMesh("../src/assets/models/cow.obj");
     std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.05f,60,100.0f, 1);
 
     
@@ -70,7 +70,7 @@ int main() {
     particleRenderer.init(mpmSim.particles);
 
     
-    float deltaTime = 0.003f;
+    float deltaTime = 0.0045f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
