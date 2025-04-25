@@ -11,12 +11,14 @@ MPMSimulation::MPMSimulation()
     : youngsModulus(1.4e5f), poissonsRatio(0.2f), grid(5, 0.25f){
 }
 
+
+// TODO: make sure its in grid, currently manually translated
 void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
     Particle p;
     for (auto& pt : sampledPoints) {
 
         // ? Debugging: negative y velocity
-        p = Particle(glm::vec3(pt.x()+0.75f, pt.y()+0.75f, pt.z()-0.75f), glm::vec3(0.0f, -1.0f, 0.0f));
+        p = Particle(glm::vec3(pt.x()+0.75f, pt.y()+0.75f, pt.z()+0.75f), glm::vec3(0.0f, 0.0f, 0.0f));
         particles.push_back(p);
     }
 }
@@ -48,20 +50,17 @@ void MPMSimulation::step(float dt) {
     transferParticlesToGrid();
     updateGrid(dt);
     transferGridToParticles(dt);
-
-    // updateParticles(dt);
+    updateParticles(dt);
 }
 
 // STEP 1 IN MPM GUIDE
 void MPMSimulation::transferParticlesToGrid() { 
 
     for (const auto& p : particles) {
+        // std::cout << "Particle Pos: (" << p.position.x << ", " << p.position.y << ", " << p.position.z << ")" << std::endl;
 
-        // ? What is offset for
-        // Offset the position to handle negative coordinates
-        // glm::vec3 offsetPos = p.position + glm::vec3(grid.size * grid.spacing * 0.5f);
         
-        glm::vec3 cellIdx = (p.position / grid.spacing) - 0.5f;
+        glm::vec3 cellIdx = (p.position / grid.spacing);
         
         // bottom left node relative to particle
         glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
@@ -71,22 +70,25 @@ void MPMSimulation::transferParticlesToGrid() {
         for (int i = -1; i <= 1; ++i) {
             for (int j = -1; j <= 1; ++j) {
                 for (int k = -1; k <= 1; ++k) {
-                    glm::ivec3 nodeIdx = baseNode + glm::ivec3(i, j, k); // Much cleaner - direct offset
-                    
 
+                    glm::ivec3 nodeIdx = baseNode + glm::ivec3(i, j, k);
+                    
                     if (nodeIdx.x < 0 || nodeIdx.x >= grid.size || 
                         nodeIdx.y < 0 || nodeIdx.y >= grid.size || 
                         nodeIdx.z < 0 || nodeIdx.z >= grid.size) {
+
+
                         continue; // if not in the grid bounds, skip it 
                     }
-                    
-                    int linearIdx = nodeIdx.x + (nodeIdx.y * grid.size) + (nodeIdx.z * grid.size * grid.size); // finding the index in the <node>
-                    
 
+
+                    int linearIdx = nodeIdx.x + (nodeIdx.y * grid.size) + (nodeIdx.z * grid.size * grid.size); // finding the index in the <node>
+                
                     // node(0, 0, 0) is at (0, 0, 0)w
                     glm::vec3 nodePos = (glm::vec3(nodeIdx) * grid.spacing);
                     
                     float weight = computeWeight(p.position, nodePos); // where we will implement B-spline
+
     
                     grid.nodes[linearIdx].mass += p.mass * weight; // setting the mass and velocity in the array 
                     grid.nodes[linearIdx].velocity += p.mass * p.velocity * weight;
@@ -110,11 +112,11 @@ void MPMSimulation::transferParticlesToGrid() {
     }
     std::cout << "Total grid mass after P2G: " << totalMass << std::endl;
 
-    for (int i = 0; i < grid.nodes.size(); ++i) {
-        if (grid.nodes[i].mass > 0.0f) {
-            std::cout << "Node " << i << " vel.y: " << grid.nodes[i].velocity.y << std::endl;
-        }
-    }
+    // for (int i = 0; i < grid.nodes.size(); ++i) {
+    //     if (grid.nodes[i].mass > 0.0f) {
+    //         std::cout << "Node " << i << " vel.y: " << grid.nodes[i].velocity.y << std::endl;
+    //     }
+    // }
 }
 
 // STEP 2 IN THE MPM GUIDE
@@ -124,9 +126,8 @@ void MPMSimulation::updateGrid(float dt ) {
         if (node.mass > 0.0f) {
             // Apply gravity
             node.force += glm::vec3(0.0f, -9.8f, 0.0f) * node.mass;
-
-            
             node.velocity += (node.force / node.mass) * dt;  // <-- Add this line
+
         }
     }
 }
@@ -134,12 +135,14 @@ void MPMSimulation::updateGrid(float dt ) {
 // STEP 3 IN MPM GUIDE (basically same as P2G but in opposite direction?)
 void MPMSimulation::transferGridToParticles(float dt) { 
     for (auto& p : particles) {
-       // glm::vec3 offsetPos = p.position + glm::vec3(grid.size * grid.spacing * 0.5f);
-        glm::vec3 cellIdx = (p.position / grid.spacing) - 0.5f;
-        glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
         
-        p.velocity = glm::vec3(0.0f);
-        p.force = glm::vec3(0.0f);
+        glm::vec3 cellIdx = (p.position / grid.spacing);
+        
+        // bottom left node relative to particle
+        glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
+
+
+        glm::vec3 newVelocity(0.0f);
         
         for (int i = -1; i <= 1; ++i) {
             for (int j = -1; j <= 1; ++j) {
@@ -148,18 +151,17 @@ void MPMSimulation::transferGridToParticles(float dt) {
                     if (nodeIdx.x < 0 || nodeIdx.x >= grid.size || nodeIdx.y < 0 || nodeIdx.y >= grid.size ||nodeIdx.z < 0 || nodeIdx.z >= grid.size) {
                         continue;
                     }
-                    
+
                     int linearIdx = nodeIdx.x + nodeIdx.y * grid.size + nodeIdx.z * grid.size * grid.size;
-                    glm::vec3 nodePos = (glm::vec3(nodeIdx) * grid.spacing) - glm::vec3(grid.size * grid.spacing);
+                    glm::vec3 nodePos = glm::vec3(nodeIdx) * grid.spacing;
                     
                     float weight = computeWeight(p.position, nodePos);
-                    p.velocity += grid.nodes[linearIdx].velocity * weight;
-                    p.force += grid.nodes[linearIdx].force * weight;
+                    newVelocity += grid.nodes[linearIdx].velocity * weight;
                 }
             }
         }
         
-        p.position += p.velocity * dt;
+        p.velocity = newVelocity;
     }
 }
 
@@ -169,11 +171,10 @@ void MPMSimulation::updateParticles(float dt) {
     
     for (auto& p : particles) {
         // Update velocity based on forces
-        p.velocity += glm::vec3(0.0f, -9.81f, 0.0f) * dt;
-        
-        // Update position
         p.position += p.velocity * dt;
-        if(p.position.y < 0.0f) {
+        
+        // Floor collision
+        if (p.position.y < 0.0f) {
             p.position.y = 0.0f;
             p.velocity.y *= -0.5f;  // Bounce with energy loss
         }
