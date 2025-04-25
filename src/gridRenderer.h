@@ -16,7 +16,13 @@ public:
 private:
     int    gridSize;
     float  gridSpacing;
-    uint VAO, VBO, massVBO;  // Added massVBO for mass data
+    uint VAO, VBO, massVBO;  // Data for grid nodes
+    
+    // New members for velocity arrows
+    uint arrowVAO, arrowVBO;
+    std::vector<glm::vec3> arrowVertices;
+    float velocityScale;  // Scale factor for velocity arrows
+    
     std::vector<glm::vec3> positions;
-    std::vector<float> masses;  // Added vector to store mass values
+    std::vector<float> masses;
 };
