@@ -4,8 +4,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 
+bool alreadyPrinted = false; // for debugging
 
-bool alreadyPrinted = false; //for debugging 
 
 MPMSimulation::MPMSimulation() 
     : youngsModulus(1.4e5f), poissonsRatio(0.2f), grid(5, 0.25f){
@@ -129,7 +129,8 @@ void MPMSimulation::updateGrid(float dt ) {
             node.velocity += (node.force / node.mass) * dt;  // <-- Add this line
 
         }
-    }
+    
+  }
 }
 
 // STEP 3 IN MPM GUIDE (basically same as P2G but in opposite direction?)
@@ -176,7 +177,7 @@ void MPMSimulation::updateParticles(float dt) {
         // Floor collision
         if (p.position.y < 0.0f) {
             p.position.y = 0.0f;
-            p.velocity.y *= -0.5f;  // Bounce with energy loss
+            p.velocity.y *= -0.5f; // Bounce with energy loss
         }
     }
 }
