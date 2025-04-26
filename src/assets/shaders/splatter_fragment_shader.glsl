@@ -16,41 +16,49 @@ void main() {
     // Calculate distance from center of splat
     float dist = length(TexCoord - vec2(0.5));
     
-    // Circular mask with smoothed edges
-    float edge = mix(0.5, 0.35, smoothing); // Adjustable edge softness
+    // Sharp cutoff at edge with minimal softening
+    // We want overlapping but distinct particles
+    float edge = 0.45;
     float mask = smoothstep(0.5, edge, dist);
     
-    // Discard fragments outside the circle
-    if (mask < 0.01)
+    // Discard fragments outside the particle
+    if (mask < 0.05)
         discard;
     
-    // Normal lighting calculation (similar to your existing shader)
+    // Much more uniform lighting across the particle
+    // This is key to reducing the "ball" appearance
     vec3 norm = normalize(Normal);
     vec3 lightDir = normalize(lightPos - FragPos);
     vec3 viewDir = normalize(viewPos - FragPos);
     
-    // Ambient
-    float ambientStrength = 0.2;
+    // Minimal ambient variation - more uniform color
+    float ambientStrength = 0.4;
     vec3 ambient = ambientStrength * lightColor;
     
-    // Diffuse
-    float diff = max(dot(norm, lightDir), 0.0);
+    // Reduced diffuse lighting effect to make particles look less rounded
+    float diff = max(dot(norm, lightDir), 0.0) * 0.4; // Reducing diffuse impact by 60%
     vec3 diffuse = diff * lightColor;
     
-    // Specular (Blinn-Phong)
-    float specularStrength = 0.8;
+    // Very minimal specular to avoid "water droplet" look
+    float specularStrength = 0.1; // Greatly reduced from 0.8
     vec3 halfwayDir = normalize(lightDir + viewDir);
-    float spec = pow(max(dot(norm, halfwayDir), 0.0), 64.0);
+    float spec = pow(max(dot(norm, halfwayDir), 0.0), 16.0); // Less sharp highlights
     vec3 specular = specularStrength * spec * lightColor;
     
-    // Apply water-like effect (refraction and color depth)
-    float depthFactor = mix(0.7, 1.0, 1.0 - dist * 1.5);
-    vec3 waterColor = mix(objectColor, objectColor * 1.3, 1.0 - dist);
+    // Almost no depth variation within each particle
+    // This helps create a more uniform fluid appearance
+    float depthFactor = 0.95; // Almost constant value
     
-    vec3 result = (ambient + diffuse + specular) * waterColor * depthFactor;
+    // Very minimal color variation from center to edge
+    vec3 fluidColor = objectColor * (1.0 + (0.05 * (1.0 - dist))); // Only 5% variation
     
-    // Apply transparency gradient from center to edge
-    float alpha = mask * mix(1.0, 0.7, dist * 2.0);
+    // Combine lighting with minimal variations
+    vec3 result = (ambient + diffuse + specular) * fluidColor * depthFactor;
+    
+    // Sharp alpha falloff at edges when particles overlap
+    // This creates a surface tension effect rather than blurry blending
+    float alphaFactor = smoothstep(0.0, 0.25, mask);
+    float alpha = mix(0.9, 0.7, dist * 0.3) * alphaFactor; // Less transparency variation
     
     FragColor = vec4(result, alpha);
 }

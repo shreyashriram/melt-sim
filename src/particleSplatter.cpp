@@ -200,107 +200,144 @@ unsigned int ParticleSplatter::createEmbeddedShaderProgram() {
     // Vertex shader compatible with your existing shader format
     const char* vertexShaderSource = R"(
         #version 330 core
-        layout (location = 0) in vec3 aPos;
-        layout (location = 1) in vec3 aNormal;
-        layout (location = 2) in vec4 aParticleData; // xyz = position, w = size
-        
-        out vec3 FragPos;
-        out vec3 Normal;
-        out vec2 TexCoord;
-        out float DistFromCenter;
-        
-        uniform mat4 model;
-        uniform mat4 view;
-        uniform mat4 projection;
-        
-        void main() {
-            // Extract particle data
-            vec3 particlePos = aParticleData.xyz;
-            float particleSize = aParticleData.w;
-            
-            // Calculate billboarding vectors
-            vec3 camRight = normalize(vec3(view[0][0], view[1][0], view[2][0]));
-            vec3 camUp = normalize(vec3(view[0][1], view[1][1], view[2][1]));
-            
-            // Generate billboarded vertex position
-            vec3 vertPos = particlePos + camRight * aPos.x * particleSize + camUp * aPos.y * particleSize;
-            
-            // Use normal perpendicular to camera plane (for lighting)
-            vec3 faceNormal = -normalize(vec3(view[0][2], view[1][2], view[2][2]));
-            
-            // We need to convert these to world space for our existing shader format
-            FragPos = vec3(model * vec4(vertPos, 1.0));
-            Normal = mat3(transpose(inverse(model))) * faceNormal;
-            
-            // Pass texture coordinates for the splat
-            TexCoord = aPos.xy + 0.5; // Convert from [-0.5, 0.5] to [0, 1]
-            
-            // Calculate distance from center for the fragment shader
-            DistFromCenter = length(aPos.xy);
-            
-            gl_Position = projection * view * model * vec4(vertPos, 1.0);
-        }
+out vec4 FragColor;
+
+in vec3 FragPos;
+in vec3 Normal;
+in vec2 TexCoord;
+in float DistFromCenter;
+
+uniform vec3 lightPos;
+uniform vec3 viewPos;
+uniform vec3 lightColor;
+uniform vec3 objectColor;
+uniform float smoothing = 0.8;
+
+void main() {
+    // Calculate distance from center of splat
+    float dist = length(TexCoord - vec2(0.5));
+    
+    // Sharp cutoff at edge with minimal softening
+    // We want overlapping but distinct particles
+    float edge = 0.45;
+    float mask = smoothstep(0.5, edge, dist);
+    
+    // Discard fragments outside the particle
+    if (mask < 0.05)
+        discard;
+    
+    // Much more uniform lighting across the particle
+    // This is key to reducing the "ball" appearance
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    vec3 viewDir = normalize(viewPos - FragPos);
+    
+    // Minimal ambient variation - more uniform color
+    float ambientStrength = 0.4;
+    vec3 ambient = ambientStrength * lightColor;
+    
+    // Reduced diffuse lighting effect to make particles look less rounded
+    float diff = max(dot(norm, lightDir), 0.0) * 0.4; // Reducing diffuse impact by 60%
+    vec3 diffuse = diff * lightColor;
+    
+    // Very minimal specular to avoid "water droplet" look
+    float specularStrength = 0.1; // Greatly reduced from 0.8
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+    float spec = pow(max(dot(norm, halfwayDir), 0.0), 16.0); // Less sharp highlights
+    vec3 specular = specularStrength * spec * lightColor;
+    
+    // Almost no depth variation within each particle
+    // This helps create a more uniform fluid appearance
+    float depthFactor = 0.95; // Almost constant value
+    
+    // Very minimal color variation from center to edge
+    vec3 fluidColor = objectColor * (1.0 + (0.05 * (1.0 - dist))); // Only 5% variation
+    
+    // Combine lighting with minimal variations
+    vec3 result = (ambient + diffuse + specular) * fluidColor * depthFactor;
+    
+    // Sharp alpha falloff at edges when particles overlap
+    // This creates a surface tension effect rather than blurry blending
+    float alphaFactor = smoothstep(0.0, 0.25, mask);
+    float alpha = mix(0.9, 0.7, dist * 0.3) * alphaFactor; // Less transparency variation
+    
+    FragColor = vec4(result, alpha);
+}
     )";
     
     // Fragment shader compatible with your existing shader format
-    const char* fragmentShaderSource = R"(
-        #version 330 core
-        out vec4 FragColor;
+
+const char* fragmentShaderSource = R"(
+    #version 330 core
+    out vec4 FragColor;
+    
+    in vec3 FragPos;
+    in vec3 Normal;
+    in vec2 TexCoord;
+    in float DistFromCenter;
+    
+    uniform vec3 lightPos;
+    uniform vec3 viewPos;
+    uniform vec3 lightColor;
+    uniform vec3 objectColor;
+    uniform float smoothing = 0.8;
+    
+    void main() {
+        // Calculate distance from center of splat
+        float dist = length(TexCoord - vec2(0.5));
         
-        in vec3 FragPos;
-        in vec3 Normal;
-        in vec2 TexCoord;
-        in float DistFromCenter;
+        // Improved circular mask with much softer edges
+        float edge = mix(0.5, 0.25, smoothing); 
+        float mask = smoothstep(0.5, edge, dist);
         
-        uniform vec3 lightPos;
-        uniform vec3 viewPos;
-        uniform vec3 lightColor;
-        uniform vec3 objectColor;
-        uniform float smoothing = 0.8;
+        // Extended influence - allows blending even beyond the normal radius
+        float extendedMask = smoothstep(0.7, edge, dist);
         
-        void main() {
-            // Calculate distance from center of splat
-            float dist = length(TexCoord - vec2(0.5));
-            
-            // Circular mask with smoothed edges
-            float edge = mix(0.5, 0.35, smoothing); // Adjustable edge softness
-            float mask = smoothstep(0.5, edge, dist);
-            
-            // Discard fragments outside the circle
-            if (mask < 0.01)
-                discard;
-            
-            // Normal lighting calculation (similar to your existing shader)
-            vec3 norm = normalize(Normal);
-            vec3 lightDir = normalize(lightPos - FragPos);
-            vec3 viewDir = normalize(viewPos - FragPos);
-            
-            // Ambient
-            float ambientStrength = 0.2;
-            vec3 ambient = ambientStrength * lightColor;
-            
-            // Diffuse
-            float diff = max(dot(norm, lightDir), 0.0);
-            vec3 diffuse = diff * lightColor;
-            
-            // Specular (Blinn-Phong)
-            float specularStrength = 0.6;
-            vec3 halfwayDir = normalize(lightDir + viewDir);
-            float spec = pow(max(dot(norm, halfwayDir), 0.0), 32.0);
-            vec3 specular = specularStrength * spec * lightColor;
-            
-            // Apply water-like effect (refraction and color depth)
-            float depthFactor = mix(0.7, 1.0, 1.0 - dist * 1.5);
-            vec3 waterColor = mix(objectColor, objectColor * 1.3, 1.0 - dist);
-            
-            vec3 result = (ambient + diffuse + specular) * waterColor * depthFactor;
-            
-            // Apply transparency gradient from center to edge
-            float alpha = mask * mix(1.0, 0.85, dist * 2.0);
-            
-            FragColor = vec4(result, alpha);
-        }
-    )";
+        // Discard only the very distant fragments
+        if (extendedMask < 0.001)
+            discard;
+        
+        // Normal lighting calculation
+        vec3 norm = normalize(Normal);
+        vec3 lightDir = normalize(lightPos - FragPos);
+        vec3 viewDir = normalize(viewPos - FragPos);
+        
+        // Ambient light
+        float ambientStrength = 0.3;
+        vec3 ambient = ambientStrength * lightColor;
+        
+        // Diffuse
+        float diff = max(dot(norm, lightDir), 0.0);
+        vec3 diffuse = diff * lightColor;
+        
+        // Specular (Blinn-Phong) 
+        float specularStrength = 0.8;
+        vec3 halfwayDir = normalize(lightDir + viewDir);
+        float spec = pow(max(dot(norm, halfwayDir), 0.0), 128.0);
+        vec3 specular = specularStrength * spec * lightColor;
+        
+        // Enhanced water-like effect with improved depth perception
+        float depthFactor = mix(0.7, 1.0, 1.0 - dist * 1.8);
+        
+        // Improved color gradient from center to edge
+        vec3 coreColor = objectColor * 1.1;
+        vec3 edgeColor = mix(objectColor, vec3(0.9, 0.95, 1.0), 0.3);
+        vec3 waterColor = mix(edgeColor, coreColor, smoothstep(0.3, 0.0, dist));
+        
+        // Final lighting calculation
+        vec3 result = (ambient + diffuse + specular) * waterColor * depthFactor;
+        
+        // Much more gradual transparency from center to edge
+        float baseAlpha = mix(0.95, 0.0, pow(dist * 1.2, 1.5));
+        float finalAlpha = mix(mask, extendedMask, 0.6) * baseAlpha;
+        
+        // Add a slight glow effect to enhance the fluid appearance
+        vec3 glowColor = mix(result, objectColor * 1.5, 0.1);
+        result = mix(result, glowColor, smoothstep(0.4, 0.0, dist));
+        
+        FragColor = vec4(result, finalAlpha);
+    }
+)";
     
     // Compile and link the shaders
     unsigned int vertexShader, fragmentShader;

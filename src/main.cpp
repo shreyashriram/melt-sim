@@ -218,13 +218,13 @@ int main() {
 
     // ! Particle Splatter Setup
     ParticleSplatter particleSplatter;
-    particleSplatter.init(0.08f, 0.8f); 
+    particleSplatter.init(0.08f, 0.75f); 
 
     // ! Grid Setup
     GridRenderer gridRenderer(mpmSim.grid.size, mpmSim.grid.spacing);
     gridRenderer.init();
     
-    float deltaTime = 0.01f;
+    float deltaTime = 0.16f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
