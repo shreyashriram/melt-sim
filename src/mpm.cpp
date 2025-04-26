@@ -145,21 +145,28 @@ void MPMSimulation::updateGrid(float dt ) {
 
 // STEP 3 IN MPM GUIDE (basically same as P2G but in opposite direction?)
 void MPMSimulation::transferGridToParticles(float dt) { 
+    static bool firstUpdate = true;
+    
     for (auto& p : particles) {
-        
         glm::vec3 cellIdx = (p.position / grid.spacing);
-        
-        // bottom left node relative to particle
         glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
-
-
+        
         glm::vec3 newVelocity(0.0f);
+        glm::mat3 velocityGradient(0.0f);
+        
+        /*if (firstUpdate) {
+            std::cout << "\n=== Velocity Gradient Debug ===" << std::endl;
+            std::cout << "Particle position: (" << p.position.x << ", " 
+                     << p.position.y << ", " << p.position.z << ")" << std::endl;
+        }*/
         
         for (int i = -1; i <= 1; ++i) {
             for (int j = -1; j <= 1; ++j) {
                 for (int k = -1; k <= 1; ++k) {
                     glm::ivec3 nodeIdx = baseNode + glm::ivec3(i, j, k);
-                    if (nodeIdx.x < 0 || nodeIdx.x >= grid.size || nodeIdx.y < 0 || nodeIdx.y >= grid.size ||nodeIdx.z < 0 || nodeIdx.z >= grid.size) {
+                    if (nodeIdx.x < 0 || nodeIdx.x >= grid.size || 
+                        nodeIdx.y < 0 || nodeIdx.y >= grid.size ||
+                        nodeIdx.z < 0 || nodeIdx.z >= grid.size) {
                         continue;
                     }
 
@@ -167,12 +174,58 @@ void MPMSimulation::transferGridToParticles(float dt) {
                     glm::vec3 nodePos = glm::vec3(nodeIdx) * grid.spacing;
                     
                     float weight = computeWeight(p.position, nodePos);
-                    newVelocity += grid.nodes[linearIdx].velocity * weight;
+                    glm::vec3 weightGrad = computeWeightGradient(p.position, nodePos);
+                    glm::vec3 nodeVelocity = grid.nodes[linearIdx].velocity;
+                    
+                    // PIC update
+                    newVelocity += nodeVelocity * weight;
+                    
+                    // Modified velocity gradient computation
+                    for (int d = 0; d < 3; d++) {
+                        for (int g = 0; g < 3; g++) {
+                            velocityGradient[g][d] += nodeVelocity[d] * weightGrad[g] / grid.spacing;
+                        }
+                    }
+                    
+                    /*if (firstUpdate && glm::length(weightGrad) > 1e-6) {
+                        std::cout << "Node(" << i << "," << j << "," << k << ") contribution:" << std::endl;
+                        std::cout << "velocity: (" << nodeVelocity.x << "," << nodeVelocity.y 
+                                << "," << nodeVelocity.z << ") * gradient: " 
+                                << weightGrad.x << "," << weightGrad.y << "," << weightGrad.z 
+                                << " * spacing: " << 1.0f/grid.spacing << std::endl;
+                    }*/
                 }
             }
         }
         
+        /*if (firstUpdate) {
+            std::cout << "\nFinal velocity gradient matrix:" << std::endl;
+            for (int i = 0; i < 3; i++) {
+                std::cout << "[ ";
+                for (int j = 0; j < 3; j++) {
+                    std::cout << velocityGradient[i][j] << " ";
+                }
+                std::cout << "]" << std::endl;
+            }
+            
+            std::cout << "\nDeformation gradient before update:" << std::endl;
+            for (int i = 0; i < 3; i++) {
+                std::cout << "[ ";
+                for (int j = 0; j < 3; j++) {
+                    std::cout << p.F[i][j] << " ";
+                }
+                std::cout << "]" << std::endl;
+            }
+            
+            firstUpdate = false;
+        }*/
+        
         p.velocity = newVelocity;
+        
+        // Update deformation gradient
+        glm::mat3 F_new = (glm::mat3(1.0f) + dt * velocityGradient) * p.F;
+        p.F = F_new;
+        p.J = glm::determinant(p.F);
     }
 }
 
@@ -220,11 +273,11 @@ glm::vec3 MPMSimulation::computeWeightGradient(const glm::vec3& particlePos, con
     glm::vec3 rel = (particlePos - nodePos) / grid.spacing;
     glm::vec3 grad(0.0f);
 
-    std::cout << "=== Weight Gradient Debug ===" << std::endl;
+    /*std::cout << "=== Weight Gradient Debug ===" << std::endl;
     std::cout << "Particle Position: (" << particlePos.x << ", " << particlePos.y << ", " << particlePos.z << ")" << std::endl;
     std::cout << "Node Position: (" << nodePos.x << ", " << nodePos.y << ", " << nodePos.z << ")" << std::endl;
     std::cout << "Difference (rel): (" << rel.x << ", " << rel.y << ", " << rel.z << ")" << std::endl;
-
+*/
     for (int dim = 0; dim < 3; ++dim) {
         float x = rel[dim];
         float absX = fabs(x);
@@ -258,12 +311,12 @@ glm::vec3 MPMSimulation::computeWeightGradient(const glm::vec3& particlePos, con
 
         grad[dim] = gradW * wa * wb;
 
-        std::cout << "dim " << dim << ": x=" << x << ", gradW=" << gradW << ", weight[" << a << "]=" << wa << ", weight[" << b << "]=" << wb << std::endl;
-        std::cout << "Partial Gradient[" << dim << "] = " << grad[dim] << std::endl;
+        //std::cout << "dim " << dim << ": x=" << x << ", gradW=" << gradW << ", weight[" << a << "]=" << wa << ", weight[" << b << "]=" << wb << std::endl;
+        //std::cout << "Partial Gradient[" << dim << "] = " << grad[dim] << std::endl;
     }
 
     grad /= grid.spacing;
-    std::cout << "Final Gradient: (" << grad.x << ", " << grad.y << ", " << grad.z << ")" << std::endl;
+    //std::cout << "Final Gradient: (" << grad.x << ", " << grad.y << ", " << grad.z << ")" << std::endl;
 
     return grad;
 }
@@ -272,7 +325,7 @@ glm::vec3 MPMSimulation::computeWeightGradient(const glm::vec3& particlePos, con
 
 
 void MPMSimulation::polarDecomposition(const glm::mat3& F, glm::mat3& R, glm::mat3& S){
-    static bool firstDecomp = true;
+    /*static bool firstDecomp = true;
     if (firstDecomp) {
         std::cout << "\n=== Polar Decomposition Debug ===" << std::endl;
         std::cout << "Input Matrix F:" << std::endl;
@@ -283,7 +336,7 @@ void MPMSimulation::polarDecomposition(const glm::mat3& F, glm::mat3& R, glm::ma
             }
             std::cout << "]" << std::endl;
         }
-    }
+    }*/
     
     Eigen::Matrix3f F_eigen; //converting the glm::mat3 matrix to Eigen matrix
     for(int i = 0; i < 3; i++) { 
@@ -311,7 +364,7 @@ void MPMSimulation::polarDecomposition(const glm::mat3& F, glm::mat3& R, glm::ma
         }
     }
 
-    if (firstDecomp) {
+   /*if (firstDecomp) {
         std::cout << "\nSingular Values: " << singularValues.transpose() << std::endl;
         
         std::cout << "\nRotation Matrix R:" << std::endl;
@@ -343,7 +396,7 @@ void MPMSimulation::polarDecomposition(const glm::mat3& F, glm::mat3& R, glm::ma
         std::cout << "\nMax difference between F and R*S: " << maxDiff << std::endl;
         
         firstDecomp = false;
-    }
+    }*/
 
 }
 
