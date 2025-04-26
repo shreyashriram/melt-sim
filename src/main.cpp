@@ -183,7 +183,7 @@ int main() {
     particleRenderer.init(mpmSim.particles);
 
     
-    float deltaTime = 0.0045f;
+    float deltaTime = 0.008f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);

@@ -41,8 +41,9 @@ public:
 
     void polarDecomposition(const glm::mat3& F, glm::mat3& R, glm::mat3& S);
     glm::mat3 computeVelocityGradient(const Particle& p);
-    void updatePlasticity(Particle& p);
+    void updatePlasticity(Particle& p, float dt);
     glm::mat3 computeStress(const Particle& p);
+    void testComputeStress();
     void runTests();
 private:
 };

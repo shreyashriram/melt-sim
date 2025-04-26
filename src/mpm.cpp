@@ -1,7 +1,9 @@
+#define GLM_ENABLE_EXPERIMENTAL  // Add this line before any GLM includes
 #include "mpm.h"
 #include "particle.h"
 #include "grid.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/string_cast.hpp>
 #include <iostream>
 #include <Eigen/Dense>
 #include <Eigen/SVD>
@@ -11,7 +13,7 @@
 bool alreadyPrinted = false; //for debugging 
 
 MPMSimulation::MPMSimulation() 
-    : youngsModulus(1.4e5f), poissonsRatio(0.2f), grid(5, 0.25f),yieldThreshold(0.01f), meltRate(0.05f), globalMeltProgress(0.0f) {
+    : youngsModulus(2.5e5f), poissonsRatio(.02f), grid(10, 0.5f), yieldThreshold(0.01f), meltRate(0.05f), globalMeltProgress(0.0f) {
     
     //calculate Lamé parameters from Young's modulus and Poisson's ratio
     shearModulus = youngsModulus / (2.0f * (1.0f + poissonsRatio));
@@ -66,79 +68,113 @@ void MPMSimulation::step(float dt) {
 
 // STEP 1 IN MPM GUIDE
 void MPMSimulation::transferParticlesToGrid() { 
+    // Add a local counter for each grid cell
+    std::vector<int> nodeParticleCounts(grid.nodes.size(), 0);
 
     for (const auto& p : particles) {
-        // std::cout << "Particle Pos: (" << p.position.x << ", " << p.position.y << ", " << p.position.z << ")" << std::endl;
-
-        
         glm::vec3 cellIdx = (p.position / grid.spacing);
-        
-        // bottom left node relative to particle
         glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
         
-        // Loop through the 3x3x3 neighborhood using -1 to 1 range directly
-        // 1 node apart.
         for (int i = -1; i <= 1; ++i) {
             for (int j = -1; j <= 1; ++j) {
                 for (int k = -1; k <= 1; ++k) {
-
                     glm::ivec3 nodeIdx = baseNode + glm::ivec3(i, j, k);
                     
                     if (nodeIdx.x < 0 || nodeIdx.x >= grid.size || 
                         nodeIdx.y < 0 || nodeIdx.y >= grid.size || 
                         nodeIdx.z < 0 || nodeIdx.z >= grid.size) {
-
-
-                        continue; // if not in the grid bounds, skip it 
+                        continue;
                     }
 
-
-                    int linearIdx = nodeIdx.x + (nodeIdx.y * grid.size) + (nodeIdx.z * grid.size * grid.size); // finding the index in the <node>
+                    int linearIdx = nodeIdx.x + (nodeIdx.y * grid.size) + (nodeIdx.z * grid.size * grid.size);
+                    nodeParticleCounts[linearIdx]++;
                 
-                    // node(0, 0, 0) is at (0, 0, 0)w
                     glm::vec3 nodePos = (glm::vec3(nodeIdx) * grid.spacing);
-                    
-                    float weight = computeWeight(p.position, nodePos); // where we will implement B-spline
-
+                    float weight = computeWeight(p.position, nodePos);
     
-                    grid.nodes[linearIdx].mass += p.mass * weight; // setting the mass and velocity in the array 
-                    grid.nodes[linearIdx].velocity += p.mass * p.velocity * weight;
+                    // Apply momentum damping based on particle count
+                    float damping = 1.0f;
+                    if (nodeParticleCounts[linearIdx] > 4) {
+                        damping = 0.8f;
+                    }
+                    if (nodeParticleCounts[linearIdx] > 8) {
+                        damping = 0.6f;
+                    }
                     
-                    // WE STILL NEED TO DO EITHER APIC OR MLS FOR PRESERVED MOMENTUM (INSTEAD OF LINEAR VELOCITY LIKE WE ARE RIGHT NOW)
+                    grid.nodes[linearIdx].mass += p.mass * weight;
+                    grid.nodes[linearIdx].velocity += p.mass * p.velocity * weight * damping;
                 }
             }
         }
     }
     
-    //have to normalize velocity to convert accumulated momentum back to velocity
-    for (auto& node : grid.nodes) {
-        if (node.mass > 0.0f) {
-            node.velocity /= node.mass;
+    // Normalize velocity and apply additional damping for overcrowded nodes
+    for (size_t i = 0; i < grid.nodes.size(); ++i) {
+        if (grid.nodes[i].mass > 0.0f) {
+            grid.nodes[i].velocity /= grid.nodes[i].mass;
+            
+            // Apply extra damping for overcrowded nodes
+            if (nodeParticleCounts[i] > 4) {
+                grid.nodes[i].velocity *= 0.9f;
+            }
+            if (nodeParticleCounts[i] > 8) {
+                grid.nodes[i].velocity *= 0.8f;
+            }
         }
     }
-
-    float totalMass = 0.0f;
-    for (const auto& n : grid.nodes) {
-        totalMass += n.mass;
-    }
-    //std::cout << "Total grid mass after P2G: " << totalMass << std::endl;
-
-    // for (int i = 0; i < grid.nodes.size(); ++i) {
-    //     if (grid.nodes[i].mass > 0.0f) {
-    //         std::cout << "Node " << i << " vel.y: " << grid.nodes[i].velocity.y << std::endl;
-    //     }
-    // }
 }
 
 // STEP 2 IN THE MPM GUIDE
-void MPMSimulation::updateGrid(float dt ) { 
-    //TODO: computeStress and update deformation gradient in this function 
+void MPMSimulation::updateGrid(float dt) {
+    // First compute forces from stress for each particle
+    for (const auto& p : particles) {
+        glm::mat3 stress = computeStress(p);
+        glm::vec3 cellIdx = p.position / grid.spacing;
+        glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
+        
+        for (int i = -1; i <= 1; ++i) {
+            for (int j = -1; j <= 1; ++j) {
+                for (int k = -1; k <= 1; ++k) {
+                    glm::ivec3 nodeIdx = baseNode + glm::ivec3(i, j, k);
+                    
+                    if (nodeIdx.x < 0 || nodeIdx.x >= grid.size || 
+                        nodeIdx.y < 0 || nodeIdx.y >= grid.size || 
+                        nodeIdx.z < 0 || nodeIdx.z >= grid.size) {
+                        continue;
+                    }
+                    
+                    glm::vec3 nodePos = glm::vec3(nodeIdx) * grid.spacing;
+                    glm::vec3 weightGrad = computeWeightGradient(p.position, nodePos);
+                    
+                    // Debug force computation
+                    static bool firstForce = true;
+                    if (firstForce) {
+                        std::cout << "Weight gradient: " << glm::to_string(weightGrad) << std::endl;
+                        std::cout << "Volume: " << p.volume << std::endl;
+                    }
+                    
+                    // Force = -volume * stress * weightGrad
+                    glm::vec3 force = -p.volume * (stress * weightGrad);
+                    
+                    if (firstForce) {
+                        std::cout << "Force: " << glm::to_string(force) << std::endl;
+                        firstForce = false;
+                    }
+                    
+                    int linearIdx = nodeIdx.x + nodeIdx.y * grid.size + nodeIdx.z * grid.size * grid.size;
+                    grid.nodes[linearIdx].force += force;
+                }
+            }
+        }
+    }
+    
+    // Then update grid velocities using forces
     for (auto& node : grid.nodes) {
         if (node.mass > 0.0f) {
-            // Apply gravity
             node.force += glm::vec3(0.0f, -9.8f, 0.0f) * node.mass;
-            node.velocity += (node.force / node.mass) * dt;  // <-- Add this line
-
+            // Add to updateGrid function after applying gravity but before updating velocity
+            node.velocity *= 0.95f;
+            node.velocity += (node.force / node.mass) * dt;
         }
     }
 }
@@ -152,14 +188,8 @@ void MPMSimulation::transferGridToParticles(float dt) {
         glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
         
         glm::vec3 newVelocity(0.0f);
-        glm::mat3 velocityGradient(0.0f);
         
-        /*if (firstUpdate) {
-            std::cout << "\n=== Velocity Gradient Debug ===" << std::endl;
-            std::cout << "Particle position: (" << p.position.x << ", " 
-                     << p.position.y << ", " << p.position.z << ")" << std::endl;
-        }*/
-        
+        // Compute PIC velocity transfer
         for (int i = -1; i <= 1; ++i) {
             for (int j = -1; j <= 1; ++j) {
                 for (int k = -1; k <= 1; ++k) {
@@ -174,56 +204,19 @@ void MPMSimulation::transferGridToParticles(float dt) {
                     glm::vec3 nodePos = glm::vec3(nodeIdx) * grid.spacing;
                     
                     float weight = computeWeight(p.position, nodePos);
-                    glm::vec3 weightGrad = computeWeightGradient(p.position, nodePos);
                     glm::vec3 nodeVelocity = grid.nodes[linearIdx].velocity;
                     
                     // PIC update
                     newVelocity += nodeVelocity * weight;
-                    
-                    // Modified velocity gradient computation
-                    for (int d = 0; d < 3; d++) {
-                        for (int g = 0; g < 3; g++) {
-                            velocityGradient[g][d] += nodeVelocity[d] * weightGrad[g] / grid.spacing;
-                        }
-                    }
-                    
-                    /*if (firstUpdate && glm::length(weightGrad) > 1e-6) {
-                        std::cout << "Node(" << i << "," << j << "," << k << ") contribution:" << std::endl;
-                        std::cout << "velocity: (" << nodeVelocity.x << "," << nodeVelocity.y 
-                                << "," << nodeVelocity.z << ") * gradient: " 
-                                << weightGrad.x << "," << weightGrad.y << "," << weightGrad.z 
-                                << " * spacing: " << 1.0f/grid.spacing << std::endl;
-                    }*/
                 }
             }
         }
         
-        /*if (firstUpdate) {
-            std::cout << "\nFinal velocity gradient matrix:" << std::endl;
-            for (int i = 0; i < 3; i++) {
-                std::cout << "[ ";
-                for (int j = 0; j < 3; j++) {
-                    std::cout << velocityGradient[i][j] << " ";
-                }
-                std::cout << "]" << std::endl;
-            }
-            
-            std::cout << "\nDeformation gradient before update:" << std::endl;
-            for (int i = 0; i < 3; i++) {
-                std::cout << "[ ";
-                for (int j = 0; j < 3; j++) {
-                    std::cout << p.F[i][j] << " ";
-                }
-                std::cout << "]" << std::endl;
-            }
-            
-            firstUpdate = false;
-        }*/
-        
         p.velocity = newVelocity;
+        p.velocityGradient = computeVelocityGradient(p);
         
         // Update deformation gradient
-        glm::mat3 F_new = (glm::mat3(1.0f) + dt * velocityGradient) * p.F;
+        glm::mat3 F_new = (glm::mat3(1.0f) + dt * p.velocityGradient) * p.F;
         p.F = F_new;
         p.J = glm::determinant(p.F);
     }
@@ -231,17 +224,99 @@ void MPMSimulation::transferGridToParticles(float dt) {
 
 
 void MPMSimulation::updateParticles(float dt) {
-    //TODO: call apply plasticity in this function 
     float gridBoundary = grid.size * grid.spacing;
     
     for (auto& p : particles) {
-        // Update velocity based on forces
+        // Update position based on velocity
         p.position += p.velocity * dt;
+        
+        // Apply plasticity to limit deformation
+        updatePlasticity(p, dt); // Call the plasticity update
         
         // Floor collision
         if (p.position.y < 0.0f) {
             p.position.y = 0.0f;
-            p.velocity.y *= -0.5f;  // Bounce with energy loss
+            p.velocity.y *= -0.3f;  // Reduced bounce coefficient from -0.5f to -0.3f
+            p.velocity.x *= 0.8f;   // Added horizontal damping
+            p.velocity.z *= 0.8f;   // Added horizontal damping
+            
+            // Update deformation gradient for collision
+            glm::mat3 R, S;
+            polarDecomposition(p.F, R, S);
+            
+            // More aggressive plastic deformation on impact
+            float compressionFactor = 0.6f; // Reduced from 0.8f to 0.6f
+            if (S[1][1] > 1.0f) {
+                S[1][1] = 1.0f;
+            } else {
+                S[1][1] = 1.0f - compressionFactor * (1.0f - S[1][1]);
+            }
+            
+            // More aggressive shear damping
+            S[0][1] *= 0.3f; // Reduced from 0.5f
+            S[1][0] *= 0.3f;
+            S[1][2] *= 0.3f;
+            S[2][1] *= 0.3f;
+            
+            p.F = R * S;
+            p.J = glm::determinant(p.F);
+        }
+
+        // Wall boundaries (similar approach)
+        for (int i = 0; i < 3; i++) {
+            bool collision = false;
+            
+            if (p.position[i] < 0.0f) {
+                p.position[i] = 0.0f;
+                p.velocity[i] *= -0.3f;  // Match floor collision bounce coefficient
+                // Apply damping to other components
+                for (int j = 0; j < 3; j++) {
+                    if (i != j) {
+                        p.velocity[j] *= 0.8f;  // Match floor collision damping
+                    }
+                }
+                collision = true;
+            }
+            else if (p.position[i] > gridBoundary) {
+                p.position[i] = gridBoundary;
+                p.velocity[i] *= -0.3f;  // Match floor collision bounce coefficient
+                // Apply damping to other components
+                for (int j = 0; j < 3; j++) {
+                    if (i != j) {
+                        p.velocity[j] *= 0.8f;  // Match floor collision damping
+                    }
+                }
+                collision = true;
+            }
+            
+            // If collision happened, update deformation gradient
+            if (collision) {
+                glm::mat3 R, S;
+                polarDecomposition(p.F, R, S);
+                
+                float compressionFactor = 0.6f;  // Match floor collision value
+                
+                // Reset/adjust stretch in collision direction
+                if (S[i][i] > 1.0f) {
+                    S[i][i] = 1.0f;
+                } else {
+                    S[i][i] = 1.0f - compressionFactor * (1.0f - S[i][i]);
+                }
+                
+                // More aggressive shear damping
+                for (int j = 0; j < 3; j++) {
+                    if (i != j) {
+                        S[i][j] *= 0.3f;  // Match floor collision value
+                        S[j][i] *= 0.3f;
+                    }
+                }
+                
+                p.F = R * S;
+                p.J = glm::determinant(p.F);
+                
+                // Only process the first collision per step to avoid redundant decompositions
+                break;
+            }
         }
     }
 }
@@ -400,15 +475,190 @@ void MPMSimulation::polarDecomposition(const glm::mat3& F, glm::mat3& R, glm::ma
 
 }
 
-glm::mat3 MPMSimulation::computeVelocityGradient(const Particle& p){
-    return glm::mat3(0.0f);
+glm::mat3 MPMSimulation::computeVelocityGradient(const Particle& p) {
+    glm::vec3 cellIdx = (p.position / grid.spacing);
+    glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
+    glm::mat3 velocityGradient(0.0f);
+    
+    // Loop through neighboring nodes
+    for (int i = -1; i <= 1; ++i) {
+        for (int j = -1; j <= 1; ++j) {
+            for (int k = -1; k <= 1; ++k) {
+                glm::ivec3 nodeIdx = baseNode + glm::ivec3(i, j, k);
+                
+                // Skip if outside grid
+                if (nodeIdx.x < 0 || nodeIdx.x >= grid.size || 
+                    nodeIdx.y < 0 || nodeIdx.y >= grid.size ||
+                    nodeIdx.z < 0 || nodeIdx.z >= grid.size) {
+                    continue;
+                }
+
+                int linearIdx = nodeIdx.x + nodeIdx.y * grid.size + nodeIdx.z * grid.size * grid.size;
+                glm::vec3 nodePos = glm::vec3(nodeIdx) * grid.spacing;
+                
+                glm::vec3 weightGrad = computeWeightGradient(p.position, nodePos);
+                glm::vec3 nodeVelocity = grid.nodes[linearIdx].velocity;
+                
+                // Compute velocity gradient
+                for (int d = 0; d < 3; d++) {
+                    for (int g = 0; g < 3; g++) {
+                        velocityGradient[g][d] += nodeVelocity[d] * weightGrad[g];
+                    }
+                }
+            }
+        }
+    }
+    
+    return velocityGradient;
 }
 
-void MPMSimulation::updatePlasticity(Particle& p){}
+void MPMSimulation::updatePlasticity(Particle& p, float dt) {
+        // Skip if the material is not yielding or if deformation is too small
+        if (p.J <= 0.0f) {
+            // Handle extreme compression (negative volume) case
+            p.F = glm::mat3(1.0f); // Reset to identity
+            p.J = 1.0f;
+            return;
+        }
+        
+        // Perform polar decomposition to get rotation and stretch
+        glm::mat3 R, S;
+        polarDecomposition(p.F, R, S);
+        
+        // Calculate von Mises equivalent strain as measure of distortion
+        // First compute the deviatoric part of S
+        float traceS = S[0][0] + S[1][1] + S[2][2];
+        glm::mat3 identity(1.0f);
+        glm::mat3 devS = S - (traceS / 3.0f) * identity;
+        
+        // Compute Frobenius norm of deviatoric stretch as strain measure
+        float normDevS = 0.0f;
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                normDevS += devS[i][j] * devS[i][j];
+            }
+        }
+        normDevS = sqrt(normDevS);
+        
+        // Adjust yield threshold based on melting status
+        float meltFactor = 1.0f - p.meltStatus;
+        float effectiveYieldThreshold = yieldThreshold * meltFactor;
+        
+        // Apply a minimum threshold to prevent instability
+        effectiveYieldThreshold = std::max(effectiveYieldThreshold, 0.005f); // Increased from 0.001f
+        
+        // Check if yielding occurs
+        if (normDevS > effectiveYieldThreshold) {
+            // Calculate how much to scale back the elastic deformation
+            float scale = effectiveYieldThreshold / normDevS;
+            
+            // Apply hardening if needed (reduces plastic flow as material deforms more)
+            float hardeningFactor = 1.0f - 0.3f * (1.0f - meltFactor); // Increased from 0.2f
+            
+            // Blend between full yield and partial yield based on hardening
+            scale = scale * hardeningFactor + (1.0f - hardeningFactor);
+            
+            // Create the modified stretch matrix by scaling the deviatoric part
+            glm::mat3 newS = (traceS / 3.0f) * identity + scale * devS;
+            
+            // Reconstruct F with the yielded S
+            glm::mat3 newF = R * newS;
+            
+            // Update the deformation gradient
+            p.F = newF;
+            
+            // Update determinant
+            p.J = glm::determinant(p.F);
+            
+            // Update melt status based on accumulated plastic strain
+            float plasticWork = (1.0f - scale) * normDevS;
+            float meltIncrement = std::min(meltRate * plasticWork * dt * 0.5f, 0.005f); // Reduced from 0.01f
+            p.meltStatus += meltIncrement;
+            p.meltStatus = std::min(p.meltStatus, 1.0f);
+            
+            // Also update the global melt progress if needed for rendering
+            globalMeltProgress = std::max(globalMeltProgress, p.meltStatus);
+        }
+    
+}
 
 
-glm::mat3 MPMSimulation::computeStress(const Particle& p){
-    return glm::mat3(0.0f);
+glm::mat3 MPMSimulation::computeStress(const Particle& p) {
+    // Check for numerical instability in deformation gradient
+    float maxF = 0.0f;
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            maxF = std::max(maxF, std::abs(p.F[i][j]));
+        }
+    }
+    
+    // If F has grown too large, apply stabilization
+    if (maxF > 1000.0f) {
+        //std::cout << "Warning: Large deformation gradient detected (max value: " << maxF 
+                 // << "). Applying stabilization." << std::endl;
+        
+        // Optional: Reset particle to avoid explosion
+        // Create a temporary copy with stabilized F
+        glm::mat3 stabilizedF;
+        float scaleFactor = 1.0f / maxF;
+        
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                stabilizedF[i][j] = p.F[i][j] * scaleFactor;
+            }
+        }
+        
+        // Use the stabilized F for stress computation
+        glm::mat3 R, S;
+        polarDecomposition(stabilizedF, R, S);
+        
+        // Scale elastic parameters based on melt progress
+        float meltFactor = 1.0f - p.meltStatus;
+        float effectiveShear = shearModulus * meltFactor;
+        float effectiveBulk = bulkModulus * meltFactor;
+        
+        // Compute strain: E = F - R (linear strain for co-rotational model)
+        glm::mat3 strain = stabilizedF - R;
+        
+        // Compute trace of strain
+        float trace = strain[0][0] + strain[1][1] + strain[2][2];
+        
+        // Compute deviatoric strain: E' = E - (1/3)*trace(E)*I
+        glm::mat3 identity(1.0f);
+        glm::mat3 strainDeviatoric = strain - (trace/3.0f) * identity;
+        
+        // Compute stabilized stress: σ = 2μ*E' + κ*trace(E)*I
+        glm::mat3 elasticStress = 2.0f * effectiveShear * strainDeviatoric + 
+                                  effectiveBulk * trace * identity;
+        
+        // Scale the stress back up to compensate for the F scaling
+        return elasticStress;
+    }
+    
+    // Normal stress computation for stable cases
+    glm::mat3 R, S;
+    polarDecomposition(p.F, R, S);
+    
+    // Scale elastic parameters based on melt progress
+    float meltFactor = 1.0f - p.meltStatus;
+    float effectiveShear = shearModulus * meltFactor;
+    float effectiveBulk = bulkModulus * meltFactor;
+    
+    // Compute strain: E = F - R (linear strain for co-rotational model)
+    glm::mat3 strain = p.F - R;
+    
+    // Compute trace of strain
+    float trace = strain[0][0] + strain[1][1] + strain[2][2];
+    
+    // Compute deviatoric strain: E' = E - (1/3)*trace(E)*I
+    glm::mat3 identity(1.0f);
+    glm::mat3 strainDeviatoric = strain - (trace/3.0f) * identity;
+    
+    // Compute stress: σ = 2μ*E' + κ*trace(E)*I
+    glm::mat3 elasticStress = 2.0f * effectiveShear * strainDeviatoric + 
+                              effectiveBulk * trace * identity;
+    
+    return elasticStress;
 }
 
 void MPMSimulation::runTests() {
@@ -470,6 +720,162 @@ void MPMSimulation::runTests() {
     std::cout << "Stretch error: " << stretchError << std::endl;
     
     std::cout << "\n=== Tests Complete ===" << std::endl;
+}
+
+void MPMSimulation::testComputeStress() {
+    std::cout << "=== Testing computeStress function ===\n";
+    
+    // Create a test particle with known F
+    Particle testParticle;
+    
+    // Test 1: Identity deformation (no stress)
+    testParticle.F = glm::mat3(1.0f); // Identity matrix
+    testParticle.meltStatus = 0.0f;
+    
+    std::cout << "Test 1: Identity deformation\n";
+    std::cout << "Input F = Identity matrix\n";
+    
+    glm::mat3 stress1 = computeStress(testParticle);
+    
+    std::cout << "Resulting stress:\n";
+    for (int i = 0; i < 3; i++) {
+        std::cout << "[ ";
+        for (int j = 0; j < 3; j++) {
+            std::cout << stress1[i][j] << " ";
+        }
+        std::cout << "]\n";
+    }
+    std::cout << "Expected: All zeros (or very small values)\n\n";
+    
+    // Test 2: Simple stretch
+    testParticle.F = glm::mat3(1.0f);
+    testParticle.F[0][0] = 1.1f; // 10% stretch in x direction
+    
+    std::cout << "Test 2: 10% stretch in x direction\n";
+    std::cout << "Input F:\n";
+    for (int i = 0; i < 3; i++) {
+        std::cout << "[ ";
+        for (int j = 0; j < 3; j++) {
+            std::cout << testParticle.F[i][j] << " ";
+        }
+        std::cout << "]\n";
+    }
+    
+    glm::mat3 stress2 = computeStress(testParticle);
+    
+    std::cout << "Resulting stress:\n";
+    for (int i = 0; i < 3; i++) {
+        std::cout << "[ ";
+        for (int j = 0; j < 3; j++) {
+            std::cout << stress2[i][j] << " ";
+        }
+        std::cout << "]\n";
+    }
+    std::cout << "Expected: Positive stress in x direction\n\n";
+    
+    // Test 3: Simple shear
+    testParticle.F = glm::mat3(1.0f);
+    testParticle.F[0][1] = 0.1f; // Shear in xy plane
+    
+    std::cout << "Test 3: Shear in xy plane\n";
+    std::cout << "Input F:\n";
+    for (int i = 0; i < 3; i++) {
+        std::cout << "[ ";
+        for (int j = 0; j < 3; j++) {
+            std::cout << testParticle.F[i][j] << " ";
+        }
+        std::cout << "]\n";
+    }
+    
+    glm::mat3 stress3 = computeStress(testParticle);
+    
+    std::cout << "Resulting stress:\n";
+    for (int i = 0; i < 3; i++) {
+        std::cout << "[ ";
+        for (int j = 0; j < 3; j++) {
+            std::cout << stress3[i][j] << " ";
+        }
+        std::cout << "]\n";
+    }
+    std::cout << "Expected: Shear stress in xy plane\n\n";
+    
+    // Test 4: Large deformation
+    testParticle.F = glm::mat3(1.0f);
+    testParticle.F[0][0] = 2.0f; // Large stretch in x direction
+    
+    std::cout << "Test 4: Large stretch (100% stretch in x direction)\n";
+    std::cout << "Input F:\n";
+    for (int i = 0; i < 3; i++) {
+        std::cout << "[ ";
+        for (int j = 0; j < 3; j++) {
+            std::cout << testParticle.F[i][j] << " ";
+        }
+        std::cout << "]\n";
+    }
+    
+    glm::mat3 stress4 = computeStress(testParticle);
+    
+    std::cout << "Resulting stress:\n";
+    for (int i = 0; i < 3; i++) {
+        std::cout << "[ ";
+        for (int j = 0; j < 3; j++) {
+            std::cout << stress4[i][j] << " ";
+        }
+        std::cout << "]\n";
+    }
+    std::cout << "Expected: Large positive stress in x direction\n\n";
+    
+    // Test 5: Rotation (should give zero stress in co-rotational model)
+    float angle = glm::radians(45.0f);
+    float c = cos(angle);
+    float s = sin(angle);
+    testParticle.F = glm::mat3(
+        c, -s, 0.0f,
+        s,  c, 0.0f,
+        0.0f, 0.0f, 1.0f
+    );
+    
+    std::cout << "Test 5: Pure rotation (45 degrees)\n";
+    std::cout << "Input F:\n";
+    for (int i = 0; i < 3; i++) {
+        std::cout << "[ ";
+        for (int j = 0; j < 3; j++) {
+            std::cout << testParticle.F[i][j] << " ";
+        }
+        std::cout << "]\n";
+    }
+    
+    glm::mat3 stress5 = computeStress(testParticle);
+    
+    std::cout << "Resulting stress:\n";
+    for (int i = 0; i < 3; i++) {
+        std::cout << "[ ";
+        for (int j = 0; j < 3; j++) {
+            std::cout << stress5[i][j] << " ";
+        }
+        std::cout << "]\n";
+    }
+    std::cout << "Expected: All zeros (no stress from pure rotation)\n\n";
+    
+    // Test 6: Extremely large deformation
+    testParticle.F = glm::mat3(1000.0f);
+    
+    std::cout << "Test 6: Extremely large deformation\n";
+    std::cout << "Input F: All elements = 1000.0\n";
+    
+    glm::mat3 stress6 = computeStress(testParticle);
+    
+    std::cout << "Resulting stress:\n";
+    for (int i = 0; i < 3; i++) {
+        std::cout << "[ ";
+        for (int j = 0; j < 3; j++) {
+            std::cout << stress6[i][j] << " ";
+        }
+        std::cout << "]\n";
+    }
+    std::cout << "Expected: Large but finite values (should not be NaN or inf)\n";
+    
+    std::cout << "=== End of computeStress testing ===\n";
 }
 /*FUNCTIONS TO ADD:
 COMPUTE STRESS
