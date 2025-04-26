@@ -58,7 +58,7 @@ void GridRenderer::update(const std::vector<GridNode>& nodes) {
     positions.reserve(nodes.size());
     masses.reserve(nodes.size());
     
-    glm::vec3 offset = glm::vec3(gridSize*gridSpacing*0.5f);
+    // glm::vec3 offset = glm::vec3(gridSize*gridSpacing*0.5f);
 
     // Only include nodes with nonzero mass
     for (int z = 0; z < gridSize; ++z) {
@@ -66,7 +66,7 @@ void GridRenderer::update(const std::vector<GridNode>& nodes) {
             for (int x = 0; x < gridSize; ++x) {
                 int idx = x + y*gridSize + z*gridSize*gridSize;
                 if (nodes[idx].mass > 0.0f) {
-                    glm::vec3 pos = glm::vec3(x, y, z)*gridSpacing - offset;
+                    glm::vec3 pos = glm::vec3(x, y, z)*gridSpacing;
                     positions.push_back(pos);
                     masses.push_back(nodes[idx].mass);
                     
