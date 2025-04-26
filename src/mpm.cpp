@@ -9,6 +9,7 @@ bool alreadyPrinted = false; //for debugging
 
 MPMSimulation::MPMSimulation() 
     : youngsModulus(1.4e5f), poissonsRatio(0.2f), grid(5, 0.25f){
+    //TODO: Add material parameters for elastoplasticity in the constructor
 }
 
 
@@ -121,7 +122,7 @@ void MPMSimulation::transferParticlesToGrid() {
 
 // STEP 2 IN THE MPM GUIDE
 void MPMSimulation::updateGrid(float dt ) { 
-    //EVENTUALLY THIS WILL HAVE INTERNAL FORCES FROM STRESS, BOUNDARY CONDITIONS, DAMPING 
+    //TODO: computeStress and update deformation gradient in this function 
     for (auto& node : grid.nodes) {
         if (node.mass > 0.0f) {
             // Apply gravity
@@ -167,6 +168,7 @@ void MPMSimulation::transferGridToParticles(float dt) {
 
 
 void MPMSimulation::updateParticles(float dt) {
+    //TODO: call apply plasticity in this function 
     float gridBoundary = grid.size * grid.spacing;
     
     for (auto& p : particles) {
@@ -209,3 +211,10 @@ float MPMSimulation::computeWeight(const glm::vec3& particlePos, const glm::vec3
 //     //NEED TO USE THIS FUNCTION LATER ON IN APIC/MLS AND B-SPLINE CALCULATIONS
 //     return glm::vec3(0.0f);
 // } 
+
+/*FUNCTIONS TO ADD:
+COMPUTE STRESS
+UPDATE DEFORMATION GRADIENT 
+APPLY PLASTICITY
+COMPUTE INTERNAL FORCES (helper to simplify the update grid function)
+POLAR DECOMPOSITION (needed for the math in the update grid function)*/
