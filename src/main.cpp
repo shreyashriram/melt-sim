@@ -32,7 +32,6 @@ using Vector3 = Eigen::Matrix<scalar, 3, 1>;
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
-<<<<<<< HEAD
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -145,8 +144,6 @@ void drawGridLines(GLuint shaderProgram, int gridSize = 5, float spacing = 0.25f
     glBindVertexArray(0);
 }
 
-=======
->>>>>>> visualise_grid
 int main() {
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -219,7 +216,7 @@ int main() {
     particleRenderer.init(mpmSim.particles);
 
     // ! Grid Setup
-    GridRenderer gridRenderer(mpmSim.getGridSize(), mpmSim.getGridSpacing());
+    GridRenderer gridRenderer(mpmSim.grid.size, mpmSim.grid.spacing);
     gridRenderer.init();
     
     float deltaTime = 0.01f;
@@ -284,17 +281,6 @@ int main() {
     
         // Single-step pipeline
         mpmSim.step(deltaTime);
-<<<<<<< HEAD
-        particleRenderer.update(mpmSim.particles);
-        
-        // ! Util Drawing 
-        drawGridLines(shaderProgram);
-        drawAxes(shaderProgram, 10.0f);
-
-        // ! Draw Plane
-        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
-        // myPlane.draw();
-=======
 
         // Use and validate grid shader program
         glUseProgram(gridShaderProgram);
@@ -308,7 +294,7 @@ int main() {
             glUniformMatrix4fv(gridProjectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
         // Draw grid-node debug
-        gridRenderer.update(mpmSim.getGridNodes()); 
+        gridRenderer.update(mpmSim.grid.nodes); 
         gridRenderer.draw(model, view, projection, gridShaderProgram);  
 
         // Draw particles with main shader program
@@ -319,17 +305,12 @@ int main() {
         if (objectColorLoc != -1)
             glUniform3f(objectColorLoc, 0.8f, 0.8f, 0.8f);
         myPlane.draw();
->>>>>>> visualise_grid
 
         // Draw Particles with main shader
         if (objectColorLoc != -1)
             glUniform3f(objectColorLoc, 1.0f, 0.0f, 0.0f); // red
         particleRenderer.draw();
 
-<<<<<<< HEAD
-        // ! Draw Mesh
-        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.2f, 0.5f, 1.0f);
-=======
         // Draw Mesh with main shader (commented out in original code)
         // glm::mat4 meshModel = glm::translate(model, glm::vec3(0.0f, 1.0f, 0.0f));
         // // meshModel = glm::rotate(meshModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
@@ -337,7 +318,6 @@ int main() {
         //     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(meshModel));
         // if (objectColorLoc != -1)
         //     glUniform3f(objectColorLoc, 0.2f, 0.5f, 1.0f);
->>>>>>> visualise_grid
         // myMesh.draw();
     
         glfwSwapBuffers(window);

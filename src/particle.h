@@ -9,8 +9,6 @@ struct Particle {
     float     mass;
     float     J;
 
-    float mass;
-    float J;
     
     glm::mat3 F;
     glm::mat3 C;  // APIC affine momentum matrix
