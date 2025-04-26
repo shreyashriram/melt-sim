@@ -26,8 +26,23 @@ public:
 
     float youngsModulus;
     float poissonsRatio;
+    // Lamé parameters (derived from Young's modulus and Poisson's ratio)
+    float shearModulus;       // Controls resistance to shape change (μ)
+    float bulkModulus;        // Controls resistance to volume change (λ)
+
+    // Plasticity parameters
+    float yieldThreshold;     // When to transition from elastic to plastic behavior
+    float meltRate;           // How quickly the material melts
+    float globalMeltProgress; // Tracks overall melting progress
 
 
     float computeWeight(const glm::vec3& particlePos, const glm::vec3& nodePos);
     glm::vec3 computeWeightGradient(const glm::vec3& particlePos, const glm::vec3& nodePos);
-}; 
+
+    void polarDecomposition(const glm::mat3& F, glm::mat3& R, glm::mat3& S);
+    glm::mat3 computeVelocityGradient(const Particle& p);
+    void updatePlasticity(Particle& p);
+    glm::mat3 computeStress(const Particle& p);
+    void runTests();
+private:
+};

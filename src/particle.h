@@ -6,23 +6,25 @@ struct Particle {
     glm::vec3 position;
     glm::vec3 velocity;
     glm::vec3 force;
+    float mass;
 
-    /*TODO: 
-    Add member variables for deformation gradient (F)
-    Add elastic and plastic components of the deformation gradient (Fe, Fp)
-    Add yield stress and other material parameter*/
 
     glm::mat3 F; //deformation gradient
-    glm::mat3 F_p; //plastic deformation gradient
-    glm::mat3 F_e; //elastic deformation gradient
-    float melt; //a number between 0 and 1 indicating the amount of melting
+    glm::mat3 F_p; //plasticity deformation gradient
+    glm::mat3 F_e; //elasticity deformation gradient
+    float meltStatus; //a number between 0 and 1 indicating the amount of melting
     float volume;
-    float mass;
-    float J;
-    
-    glm::mat3 C;
+    float J; //determinant of the deformation gradient
+    glm::mat3 C; //APIC velocity field matrix
 
-    Particle() : position(0.0f), velocity(0.0f), force(0.0f), mass(1.0f), J(1.0f), F(1.0f), C(0.0f) {};
-    Particle(const glm::vec3& pos) : position(pos), velocity(0.0f), force(0.0f), mass(1.0f), J(1.0f), F(1.0f), C(0.0f) {};
-    Particle(const glm::vec3& pos, const glm::vec3& vel) : position(pos), velocity(vel), force(0.0f), mass(1.0f), J(1.0f), F(1.0f), C(0.0f) {};
+    
+    Particle() : position(0.0f), velocity(0.0f), force(0.0f), mass(1.0f), J(1.0f), volume(1.0f), meltStatus(0.0f),F(1.0f), F_p(1.0f), F_e(1.0f), C(0.0f) {};
+          
+    //Constructor with position
+    Particle(const glm::vec3& pos) : position(pos), velocity(0.0f), force(0.0f), mass(1.0f), J(1.0f), volume(1.0f), meltStatus(0.0f),F(1.0f), F_p(1.0f), F_e(1.0f), C(0.0f) {};
+    
+    // Constructor with position and velocity   
+    Particle(const glm::vec3& pos, const glm::vec3& vel) : position(pos), velocity(vel), force(0.0f), mass(1.0f), J(1.0f), volume(1.0f), meltStatus(0.0f), F(1.0f), F_p(1.0f), F_e(1.0f), C(0.0f) {};
 };
+
+
