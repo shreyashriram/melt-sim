@@ -28,6 +28,7 @@ using Vector3 = Eigen::Matrix<scalar, 3, 1>;
 #include "grid.h"
 #include "mpm.h"
 #include "gridRenderer.h"
+#include "particleSplatter.h"
 
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
@@ -205,7 +206,7 @@ int main() {
     // ! Mesh Subsampling 
     Mesh myMesh("../src/assets/models/cube.obj");
     // std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.05f,60,100.0f, 1);
-    std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
+    std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(10000);
     std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
     
     MPMSimulation mpmSim;
@@ -214,6 +215,10 @@ int main() {
     // ! Particle Setup
     ParticleRenderer particleRenderer;
     particleRenderer.init(mpmSim.particles);
+
+    // ! Particle Splatter Setup
+    ParticleSplatter particleSplatter;
+    particleSplatter.init(0.08f, 0.8f); 
 
     // ! Grid Setup
     GridRenderer gridRenderer(mpmSim.grid.size, mpmSim.grid.spacing);
@@ -295,7 +300,7 @@ int main() {
 
         // Draw grid-node debug
         gridRenderer.update(mpmSim.grid.nodes); 
-        gridRenderer.draw(model, view, projection, gridShaderProgram);  
+        // gridRenderer.draw(model, view, projection, gridShaderProgram);  
 
         // Draw particles with main shader program
         glUseProgram(shaderProgram);
@@ -306,10 +311,14 @@ int main() {
             glUniform3f(objectColorLoc, 0.8f, 0.8f, 0.8f);
         myPlane.draw();
 
-        // Draw Particles with main shader
-        if (objectColorLoc != -1)
-            glUniform3f(objectColorLoc, 1.0f, 0.0f, 0.0f); // red
-        particleRenderer.draw();
+        // // Draw Particles with main shader
+        // if (objectColorLoc != -1)
+        //     glUniform3f(objectColorLoc, 1.0f, 0.0f, 0.0f); // red
+        // particleRenderer.draw();
+
+        // Update and draw particles with splatting for fluid-like appearance
+        particleSplatter.update(mpmSim.particles);
+        particleSplatter.draw(model, view, projection);
 
         // Draw Mesh with main shader (commented out in original code)
         // glm::mat4 meshModel = glm::translate(model, glm::vec3(0.0f, 1.0f, 0.0f));
