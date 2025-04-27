@@ -229,8 +229,8 @@ int main() {
         drawAxes(shaderProgram, 10.0f);
 
         // ! Draw Plane
-        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
-        // myPlane.draw();
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
+        myPlane.draw();
 
         // ! Draw Particles
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 1.0f, 0.0f, 0.0f); // red
