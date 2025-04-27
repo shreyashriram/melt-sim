@@ -217,8 +217,13 @@ int main()
     std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(10000);
     std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
+    //move the mesh higher
+    
+
     MPMSimulation mpmSim;
     mpmSim.addMeshParticles(sampledPoints);
+
+
 
     // ! Particle Setup
     ParticleRenderer particleRenderer;

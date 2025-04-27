@@ -75,14 +75,19 @@ void ParticleSplatter::init(float particleRadius, float smoothingKernel) {
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
     
-    // Prepare instanced buffer for particle data
+    // Prepare instanced buffer for particle data - now includes velocity
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-    glBufferData(GL_ARRAY_BUFFER, 1000 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW); // Reserve space
+    glBufferData(GL_ARRAY_BUFFER, 1000 * sizeof(glm::vec4) * 2, nullptr, GL_DYNAMIC_DRAW); // Reserve space for position and velocity
     
-    // Attribute 2: Per-instance particle data (position + size)
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
+    // Attribute 2: Per-instance particle position data (position + size)
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4) * 2, (void*)0);
     glEnableVertexAttribArray(2);
     glVertexAttribDivisor(2, 1); // This makes it instanced
+    
+    // Attribute 3: Per-instance particle velocity data
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4) * 2, (void*)(sizeof(glm::vec4)));
+    glEnableVertexAttribArray(3);
+    glVertexAttribDivisor(3, 1); // This makes it instanced
     
     glBindVertexArray(0);
     
@@ -169,25 +174,34 @@ void ParticleSplatter::update(const std::vector<Particle>& particles) {
     numParticles = particles.size();
     if (numParticles == 0) return;
     
-    particleData.resize(numParticles);
+    // We now store both position and velocity data for each particle
+    particleData.resize(numParticles * 2);
     
-    // Update particle data: position (xyz) and size (w)
+    // Update particle data: position, size, velocity, and padding
     for (size_t i = 0; i < numParticles; i++) {
         // Add small random offsets to Z position to avoid Z-fighting
         float randomOffset = ((float)rand() / (float)RAND_MAX) * 0.0001f;
         
         // Store position with radius
-        particleData[i] = glm::vec4(
+        particleData[i*2] = glm::vec4(
             particles[i].position.x, 
             particles[i].position.y, 
             particles[i].position.z + randomOffset, 
             radius
         );
+        
+        // Store velocity with a padding value
+        particleData[i*2 + 1] = glm::vec4(
+            particles[i].velocity.x,
+            particles[i].velocity.y,
+            particles[i].velocity.z,
+            0.0f // Padding
+        );
     }
     
     // Update instance buffer
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-    glBufferData(GL_ARRAY_BUFFER, numParticles * sizeof(glm::vec4), particleData.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, particleData.size() * sizeof(glm::vec4), particleData.data(), GL_DYNAMIC_DRAW);
 }
 
 void ParticleSplatter::draw(const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection) {
@@ -215,20 +229,21 @@ void ParticleSplatter::draw(const glm::mat4& model, const glm::mat4& view, const
         // Sort particles by distance to camera (back to front)
         std::vector<std::pair<float, size_t>> distances(numParticles);
         for (size_t i = 0; i < numParticles; i++) {
-            glm::vec3 particlePos = glm::vec3(particleData[i]);
+            glm::vec3 particlePos = glm::vec3(particleData[i*2]);
             distances[i] = std::make_pair(-glm::distance(particlePos, cameraPos), i);
         }
         std::sort(distances.begin(), distances.end());
         
         // Reorder particle data
-        std::vector<glm::vec4> sortedData(numParticles);
+        std::vector<glm::vec4> sortedData(particleData.size());
         for (size_t i = 0; i < numParticles; i++) {
-            sortedData[i] = particleData[distances[i].second];
+            sortedData[i*2] = particleData[distances[i].second*2];
+            sortedData[i*2 + 1] = particleData[distances[i].second*2 + 1];
         }
         
         // Update the buffer with sorted data
         glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-        glBufferData(GL_ARRAY_BUFFER, numParticles * sizeof(glm::vec4), sortedData.data(), GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sortedData.size() * sizeof(glm::vec4), sortedData.data(), GL_DYNAMIC_DRAW);
     }
     
     // Use the splatter shader program
@@ -269,6 +284,12 @@ void ParticleSplatter::draw(const glm::mat4& model, const glm::mat4& view, const
         glUniform1f(smoothingLoc, smoothing);
     }
     
+    // Set droplet deformation factor
+    GLint dropletDeformFactorLoc = glGetUniformLocation(shaderProgram, "dropletDeformFactor");
+    if (dropletDeformFactorLoc != -1) {
+        glUniform1f(dropletDeformFactorLoc, 0.7f); // Controls how much to stretch particles based on velocity
+    }
+    
     // Set metaball-specific uniforms
     GLint metaballThresholdLoc = glGetUniformLocation(shaderProgram, "metaballThreshold");
     if (metaballThresholdLoc != -1) {
@@ -305,8 +326,13 @@ void ParticleSplatter::draw(const glm::mat4& model, const glm::mat4& view, const
         
         GLint particlePositionsLoc = glGetUniformLocation(shaderProgram, "particlePositions");
         if (particlePositionsLoc != -1) {
+            // Pass every other entry (just positions, not velocities)
+            std::vector<glm::vec4> positionsOnly(maxMetaballParticles);
+            for (int i = 0; i < maxMetaballParticles; i++) {
+                positionsOnly[i] = particleData[i*2]; // Every other entry is a position
+            }
             // Pass the first 100 (or fewer) particle positions for metaball calculation
-            glUniform4fv(particlePositionsLoc, maxMetaballParticles, glm::value_ptr(particleData[0]));
+            glUniform4fv(particlePositionsLoc, maxMetaballParticles, glm::value_ptr(positionsOnly[0]));
         }
     }
     
@@ -334,54 +360,106 @@ void ParticleSplatter::draw(const glm::mat4& model, const glm::mat4& view, const
 
 // Create updated shaders using embedded code (fallback if external shaders not found)
 unsigned int ParticleSplatter::createEmbeddedShaderProgram() {
-    // Vertex shader with metaball and water droplet support
+    // Vertex shader with velocity-based deformation
     const char* vertexShaderSource = R"(
         #version 330 core
         layout (location = 0) in vec3 aPos;
         layout (location = 1) in vec3 aNormal;
         layout (location = 2) in vec4 aParticleData; // xyz = position, w = size
+        layout (location = 3) in vec4 aParticleVelocity; // xyz = velocity, w = unused
 
         out vec3 FragPos;
         out vec3 Normal;
         out vec2 TexCoord;
         out float DistFromCenter;
         out vec4 ParticleParams; // Pass particle data to fragment shader
+        out vec3 ParticleVelocity; // Pass velocity for fragment shader effects
 
         uniform mat4 model;
         uniform mat4 view;
         uniform mat4 projection;
+        uniform float dropletDeformFactor = 0.7; // Controls how much to stretch particles based on velocity
 
         void main() {
             // Extract particle data
             vec3 particlePos = aParticleData.xyz;
             float particleSize = aParticleData.w;
+            vec3 velocity = aParticleVelocity.xyz;
             
-            // Calculate billboarding vectors
+            // Calculate velocity magnitude and direction
+            float velocityMag = length(velocity);
+            vec3 velocityDir = velocityMag > 0.01 ? normalize(velocity) : vec3(0.0, -1.0, 0.0);
+            
+            // Calculate billboarding vectors - aligned with camera but stretched in velocity direction
             vec3 camRight = normalize(vec3(view[0][0], view[1][0], view[2][0]));
             vec3 camUp = normalize(vec3(view[0][1], view[1][1], view[2][1]));
             
-            // Generate billboarded vertex position
-            vec3 vertPos = particlePos + camRight * aPos.x * particleSize + camUp * aPos.y * particleSize;
+            // Transform these basis vectors to align one with velocity direction for stretching
+            // We want to stretch in the velocity direction and compress perpendicular to it
             
-            // Use normal perpendicular to camera plane (for lighting)
-            vec3 faceNormal = -normalize(vec3(view[0][2], view[1][2], view[2][2]));
+            // Calculate the billboard right and up directions
+            vec3 billboardNormal = normalize(vec3(view[0][2], view[1][2], view[2][2]));
+            
+            // Find the best alignment between velocity and the camera basis
+            // Project velocity onto camera plane
+            vec3 projVelocity = velocity - dot(velocity, billboardNormal) * billboardNormal;
+            vec3 projVelocityDir = length(projVelocity) > 0.01 ? normalize(projVelocity) : normalize(camUp);
+
+            // Calculate perpendicular vector to both the projected velocity and billboard normal
+            vec3 perpVelocity = normalize(cross(projVelocityDir, billboardNormal));
+            
+            // Deformation factors - stretch in velocity direction, compress in perpendicular
+            float stretchFactor = 1.0 + velocityMag * dropletDeformFactor;
+            float compressFactor = 1.0 / (1.0 + velocityMag * 0.3);
+            
+            // Scale in velocity direction
+            vec3 adjustedRight, adjustedUp;
+            
+            if (velocityMag > 0.01) {
+                // Use the projected velocity as one axis and the perpendicular as the other
+                adjustedRight = perpVelocity * compressFactor;
+                adjustedUp = projVelocityDir * stretchFactor;
+            } else {
+                // When nearly stationary, use regular billboarding
+                adjustedRight = camRight;
+                adjustedUp = camUp;
+            }
+            
+            // Generate billboarded vertex position with velocity-based deformation
+            vec3 vertPos = particlePos + 
+                          adjustedRight * aPos.x * particleSize + 
+                          adjustedUp * aPos.y * particleSize;
+            
+            // Create a normal that gives good lighting with the deformed shape
+            vec3 faceNormal;
+            if (velocityMag > 0.01) {
+                // Blend between velocity direction and camera-facing normal for dynamic billboarding
+                faceNormal = normalize(mix(billboardNormal, -velocityDir, 0.3));
+            } else {
+                // Standard normal when nearly stationary
+                faceNormal = billboardNormal;
+            }
             
             // We need to convert these to world space for our existing shader format
             FragPos = vec3(model * vec4(vertPos, 1.0));
             Normal = mat3(transpose(inverse(model))) * faceNormal;
             
-            // Pass texture coordinates for the splat
+            // Pass texture coordinates for the splat - adjusted to account for stretching
             TexCoord = aPos.xy + 0.5; // Convert from [-0.5, 0.5] to [0, 1]
             
             // Calculate distance from center for the fragment shader
-            DistFromCenter = length(aPos.xy);
+            // Account for the elongated shape by scaling the distance calculation
+            vec2 scaledPos = vec2(aPos.x / compressFactor, aPos.y / stretchFactor);
+            DistFromCenter = length(scaledPos);
             
             // Pass particle parameters to fragment shader for unique water effects
             ParticleParams = aParticleData;
+            ParticleVelocity = velocity;
             
             gl_Position = projection * view * model * vec4(vertPos, 1.0);
         }
     )";
+    
     const char* fragmentShaderSource = R"(
         #version 330 core
         out vec4 FragColor;
@@ -391,6 +469,7 @@ unsigned int ParticleSplatter::createEmbeddedShaderProgram() {
         in vec2 TexCoord;
         in float DistFromCenter;
         in vec4 ParticleParams; // xyz = position, w = size
+        in vec3 ParticleVelocity; // Velocity for trail effects
 
         // Metaball parameters
         uniform int numParticles;         // Total number of particles
@@ -448,12 +527,22 @@ unsigned int ParticleSplatter::createEmbeddedShaderProgram() {
         }
 
         void main() {
-            // Calculate distance from center of splat
+            // Calculate velocity effect
+            float velocityMag = length(ParticleVelocity);
+            float velocityEffect = clamp(velocityMag * 0.5, 0.0, 1.0);
+            
+            // Calculate distance from center of splat, adjusted for velocity
             float dist = length(TexCoord - vec2(0.5));
             
-            // Basic mask with sharp cutoff
-            float edge = 0.45;
+            // Adjust edge for velocity - more elongated droplets have sharper edges
+            float edge = mix(0.45, 0.3, velocityEffect);
             float mask = smoothstep(0.5, edge, dist);
+            
+            // Trail effect for faster particles
+            float trailEffect = smoothstep(0.0, 1.0, velocityMag * 0.3);
+            
+            // Apply trail to mask - make particles with higher velocity more transparent at the edges
+            mask = mix(mask, mask * (1.0 - dist), trailEffect * 0.5);
             
             // Discard fragments outside the particle
             if (mask < 0.05)
@@ -486,6 +575,14 @@ unsigned int ParticleSplatter::createEmbeddedShaderProgram() {
                 droplet *= dropletIntensity;
             }
             
+            // Enhanced droplet effects based on velocity
+            if (velocityMag > 0.2) {
+                // Add streaks in the direction of movement for fast particles
+                vec2 normalizedVelocity2D = normalize(vec2(ParticleVelocity.x, ParticleVelocity.y));
+                float streakEffect = pow(abs(dot(normalize(TexCoord - vec2(0.5)), normalizedVelocity2D)), 3.0);
+                droplet += streakEffect * velocityEffect * 0.3;
+            }
+            
             // Apply water droplet effect to normal and color
             vec3 adjustedNormal = normalize(norm + vec3(droplet * 0.1, droplet * 0.1, 0.0));
             
@@ -501,8 +598,11 @@ unsigned int ParticleSplatter::createEmbeddedShaderProgram() {
             // Enhanced fluid appearance with varying depth and color
             float depthFactor = 0.95 - droplet * 0.1;
             
+            // Add velocity-based color tinting (blue to white as velocity increases)
+            vec3 velocityColor = mix(fluidColor, vec3(1.0, 1.0, 1.0), velocityEffect * 0.3);
+            
             // Combine lighting
-            vec3 result = (ambient + diffuse + specular) * fluidColor * depthFactor;
+            vec3 result = (ambient + diffuse + specular) * velocityColor * depthFactor;
             
             // Enhanced alpha for metaball effect
             float alphaFactor = smoothstep(0.0, 0.25, mask);
@@ -516,8 +616,9 @@ unsigned int ParticleSplatter::createEmbeddedShaderProgram() {
             float causticEffect = noise(TexCoord * 20.0) * noise(TexCoord * 15.0 + vec2(0.2, 0.3));
             result += causticEffect * 0.1 * baseAlpha * vec3(0.8, 0.95, 1.0);
             
-            // Final color
-            FragColor = vec4(result, baseAlpha);
+            // Final color with trail transparency for fast-moving particles
+            float finalAlpha = baseAlpha * (1.0 - trailEffect * 0.2);
+            FragColor = vec4(result, finalAlpha);
         }
     )";
     
@@ -569,5 +670,3 @@ unsigned int ParticleSplatter::createEmbeddedShaderProgram() {
     
     return program;
 }
-    // Fragment shader with metaball and water droplet effects
-    

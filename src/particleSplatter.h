@@ -30,7 +30,7 @@ private:
     unsigned int VAO, VBO, instanceVBO;
     unsigned int shaderProgram;
     
-    std::vector<glm::vec4> particleData; // Position (xyz) and size (w)
+    std::vector<glm::vec4> particleData; // Position and velocity data interleaved
     size_t numParticles;
     
     // Splatter parameters
