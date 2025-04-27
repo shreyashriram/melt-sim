@@ -7,7 +7,9 @@ struct GridNode {
     glm::vec3 velocity;
     glm::vec3 force;
     float mass;
+    float fluidFraction;
 
+    GridNode() : velocity(0.0f), force(0.0f), mass(0.0f), fluidFraction(0.0f) {}
 };
 
 class Grid {
