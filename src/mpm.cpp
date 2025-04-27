@@ -64,6 +64,7 @@ void MPMSimulation::step(float dt) {
         n.velocity = glm::vec3(0.0f);
         n.force = glm::vec3(0.0f);
         n.mass = 0.0f;
+        n.fluidFraction = 0.0f;  // Reset fluid fraction
     }
     
     transferParticlesToGrid();
@@ -109,15 +110,21 @@ void MPMSimulation::transferParticlesToGrid() {
 
                     grid.nodes[linearIdx].mass += p.mass * weight;
                     grid.nodes[linearIdx].velocity += p.mass * p.velocity * weight * damping;
+                    
+                    // Transfer fluid fraction (weighted by mass)
+                    grid.nodes[linearIdx].fluidFraction += p.mass * p.meltStatus * weight;
                 }
             }
         }
     }
     
-    // Normalize velocity with minimal damping
+    // Normalize velocity and fluid fraction
     for (size_t i = 0; i < grid.nodes.size(); ++i) {
         if (grid.nodes[i].mass > 0.0f) {
             grid.nodes[i].velocity /= grid.nodes[i].mass;
+            
+            // Normalize fluid fraction by mass
+            grid.nodes[i].fluidFraction /= grid.nodes[i].mass;
             
             // Minimal damping for overcrowded nodes
             if (nodeParticleCounts[i] > 4) {
@@ -165,10 +172,60 @@ void MPMSimulation::updateGrid(float dt) {
         }
     }
     
-    // Then update grid velocities using forces with minimal damping
-    for (auto& node : grid.nodes) {
+    // Then update grid velocities using forces with fluid-aware diffusion
+    for (size_t idx = 0; idx < grid.nodes.size(); idx++) {
+        auto& node = grid.nodes[idx];
         if (node.mass > 0.0f) {
-            node.force += glm::vec3(0.0f, -9.8f, 0.0f) * node.mass;  // Standard gravity
+            // Add gravity
+            node.force += glm::vec3(0.0f, -9.8f, 0.0f) * node.mass;
+            
+            // Apply velocity diffusion for fluid-like behavior
+            // This simulates viscosity in fluid regions
+            if (node.fluidFraction > 0.1f) {
+                glm::vec3 avgNeighborVel(0.0f);
+                float totalWeight = 0.0f;
+                
+                // Extract 3D indices from linear index
+                int z = idx / (grid.size * grid.size);
+                int remainder = idx % (grid.size * grid.size);
+                int y = remainder / grid.size;
+                int x = remainder % grid.size;
+                glm::ivec3 nodeIdx(x, y, z);
+                
+                // Look at neighboring grid nodes
+                for (int i = -1; i <= 1; ++i) {
+                    for (int j = -1; j <= 1; ++j) {
+                        for (int k = -1; k <= 1; ++k) {
+                            if (i == 0 && j == 0 && k == 0) continue; // Skip self
+                            
+                            glm::ivec3 neighborIdx = nodeIdx + glm::ivec3(i, j, k);
+                            if (neighborIdx.x < 0 || neighborIdx.x >= grid.size || 
+                                neighborIdx.y < 0 || neighborIdx.y >= grid.size || 
+                                neighborIdx.z < 0 || neighborIdx.z >= grid.size) {
+                                continue;
+                            }
+                            
+                            int linearIdx = neighborIdx.x + neighborIdx.y * grid.size + 
+                                           neighborIdx.z * grid.size * grid.size;
+                                           
+                            if (grid.nodes[linearIdx].mass > 0.0f) {
+                                avgNeighborVel += grid.nodes[linearIdx].velocity;
+                                totalWeight += 1.0f;
+                            }
+                        }
+                    }
+                }
+                
+                if (totalWeight > 0.0f) {
+                    avgNeighborVel /= totalWeight;
+                    // Blend velocity with neighbors based on fluid fraction
+                    // This creates viscosity-like behavior
+                    float diffusionStrength = 0.2f * node.fluidFraction;
+                    node.velocity = glm::mix(node.velocity, avgNeighborVel, diffusionStrength);
+                }
+            }
+            
+            // Apply minimal damping and update velocity
             node.velocity *= 0.999f;  // Minimal damping
             node.velocity += (node.force / node.mass) * dt;
         }
@@ -481,7 +538,17 @@ void MPMSimulation::updatePlasticity(Particle& p, float dt) {
         return;
     }
     
-    // Perform polar decomposition to get rotation and stretch
+    // For highly melted material, reset the deviatoric part of F
+    // This eliminates "memory" of shear deformation, which is key for fluid behavior
+    if (p.meltStatus > 0.8f) {
+        // Preserve only the volumetric component
+        float J = p.J;
+        float scaleFactor = std::pow(J, 1.0f/3.0f);
+        p.F = glm::mat3(1.0f) * scaleFactor;
+        return;
+    }
+    
+    // For partially melted material, use regular plasticity but with lower yield threshold
     glm::mat3 R, S;
     polarDecomposition(p.F, R, S);
     
@@ -499,32 +566,24 @@ void MPMSimulation::updatePlasticity(Particle& p, float dt) {
     }
     normDevS = sqrt(normDevS);
     
-    // Use very low yield threshold for fluid-like behavior
-    float effectiveYieldThreshold = 0.01f;
+    // Scale yield threshold based on melt status
+    // As material melts, it yields much more easily
+    float effectiveYieldThreshold = yieldThreshold * (1.0f - 0.95f * p.meltStatus);
     
     // Check if yielding occurs
     if (normDevS > effectiveYieldThreshold) {
         // Calculate how much to scale back the elastic deformation
         float scale = effectiveYieldThreshold / normDevS;
         
-        // Apply minimal hardening for fluid-like behavior
-        float hardeningFactor = 0.1f;
+        // Minimal hardening as material melts
+        float hardeningFactor = 0.5f * (1.0f - p.meltStatus);
         scale = scale * hardeningFactor + (1.0f - hardeningFactor);
         
         // Create the modified stretch matrix
         glm::mat3 newS = (traceS / 3.0f) * identity + scale * devS;
         
-        // Allow more deformation for fluid-like behavior
-        for (int i = 0; i < 3; i++) {
-            if (newS[i][i] > 2.0f) newS[i][i] = 2.0f;  // Allow more stretch
-            if (newS[i][i] < 0.5f) newS[i][i] = 0.5f;  // Allow more compression
-        }
-        
         // Reconstruct F with the yielded S
-        glm::mat3 newF = R * newS;
-        
-        // Update the deformation gradient
-        p.F = newF;
+        p.F = R * newS;
         p.J = glm::determinant(p.F);
     }
 }
@@ -555,8 +614,11 @@ glm::mat3 MPMSimulation::computeStress(const Particle& p) {
         glm::mat3 R, S;
         polarDecomposition(stabilizedF, R, S);
         
-        // Force solid material parameters
-        float effectiveShear = shearModulus;
+        // Scale shear modulus based on melt status
+        // For fluid-like behavior, reduce shear resistance as melt increases
+        float effectiveShear = shearModulus * (1.0f - 0.99f * p.meltStatus);
+        
+        // Keep bulk modulus high for volume preservation
         float effectiveBulk = bulkModulus;
         
         // Compute strain: E = F - R (linear strain for co-rotational model)
@@ -581,8 +643,11 @@ glm::mat3 MPMSimulation::computeStress(const Particle& p) {
     glm::mat3 R, S;
     polarDecomposition(p.F, R, S);
     
-    // Force full solid material parameters
-    float effectiveShear = shearModulus;
+    // Scale shear modulus based on melt status
+    // When fully melted (meltStatus = 1.0), shear resistance approaches zero
+    float effectiveShear = shearModulus * (1.0f - 0.99f * p.meltStatus);
+    
+    // Keep bulk modulus high to maintain volume preservation
     float effectiveBulk = bulkModulus;
     
     // Compute strain: E = F - R (linear strain for co-rotational model)
