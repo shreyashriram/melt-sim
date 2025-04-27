@@ -20,6 +20,8 @@ MPMSimulation::MPMSimulation()
       meltRate(2.0f),          // Increased melt rate for more noticeable changes
       globalMeltProgress(0.0f) {
     
+    grid.setupBuffers();
+    
     //calculate Lamé parameters from Young's modulus and Poisson's ratio
     shearModulus = youngsModulus / (2.0f * (1.0f + poissonsRatio));
     bulkModulus = youngsModulus * poissonsRatio / ((1.0f + poissonsRatio) * (1.0f - 2.0f * poissonsRatio));
@@ -35,8 +37,10 @@ void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
     Particle p;
     for (auto& pt : sampledPoints) {
         // Give initial downward velocity and slight horizontal motion
-        p = Particle(glm::vec3(pt.x()+0.75f, pt.y()+0.22f, pt.z()+0.75f), 
-                    glm::vec3(0.0f, 0.0f, 0.0f));  // Moderate initial velocity
+        float mesh_translate = 1.5f;
+
+        p = Particle(glm::vec3(pt.x()+mesh_translate, pt.y()+mesh_translate, pt.z()+mesh_translate), 
+                    glm::vec3(0.0f, -2.0f, 0.0f)); 
         p.meltStatus = 0.0f;  // Start as solid
         particles.push_back(p);
     }

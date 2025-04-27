@@ -81,65 +81,6 @@ void drawAxes(GLuint shaderProgram, float axisLength = 10.0f) {
     glBindVertexArray(0);
 }
 
-void drawGridLines(GLuint shaderProgram, int gridSize = 5, float spacing = 0.25f) {
-    static GLuint vao = 0, vbo = 0;
-    static bool initialized = false;
-
-    if (!initialized) {
-        std::vector<glm::vec3> lines;
-
-        float start = 0.0f;                  // Min Corner (0,0,0)
-        float end = gridSize * spacing;       // Max Corner (1.25,1.25,1.25)
-
-        for (int i = 0; i < gridSize + 1; ++i) {
-            float offset = i * spacing;
-
-            // Y-Z planes (lines along X)
-            for (int j = 0; j < gridSize + 1; ++j) {
-                float y = j * spacing;
-                lines.emplace_back(start, y, offset); // growing +Z
-                lines.emplace_back(end,   y, offset);
-            }
-
-            // X-Z planes (lines along Y)
-            for (int j = 0; j < gridSize + 1; ++j) {
-                float x = j * spacing;
-                lines.emplace_back(x, start, offset); // growing +Z
-                lines.emplace_back(x, end,   offset);
-            }
-
-            // X-Y planes (lines along Z)
-            for (int j = 0; j < gridSize + 1; ++j) {
-                float x = j * spacing;
-                lines.emplace_back(x, offset, start); // growing +Y
-                lines.emplace_back(x, offset, end);
-            }
-        }
-
-        glGenVertexArrays(1, &vao);
-        glGenBuffers(1, &vbo);
-
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, lines.size() * sizeof(glm::vec3), lines.data(), GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
-        glBindVertexArray(0);
-
-        initialized = true;
-    }
-
-    glUseProgram(shaderProgram);
-
-    glm::mat4 model = glm::mat4(1.0f);
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
-    glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.6f, 0.6f, 0.6f); // gray lines
-
-    glBindVertexArray(vao);
-    glDrawArrays(GL_LINES, 0, (gridSize + 1) * (gridSize + 1) * 3 * 2); // 3 planes, 2 vertices per line
-    glBindVertexArray(0);
-}
-
 int main() {
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -189,8 +130,8 @@ int main() {
     glm::mat4 model = glm::mat4(1.0f);
 
     // View: camera level with cube/cow
-    glm::vec3 cameraPos = glm::vec3(-0.5f, 2.0f, -2.5f);  // higher Y
-    glm::vec3 target = glm::vec3(0.5f, 0.5f, 0.5f);     // still looking at the cow
+    glm::vec3 cameraPos = glm::vec3(-0.5f, 3.0f, -4.0f);  // higher Y
+    glm::vec3 target = glm::vec3(1.25f, 1.25f, 1.25f);     // still looking at the cow
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
     glm::mat4 view = glm::lookAt(cameraPos, target, up);    
@@ -207,7 +148,7 @@ int main() {
         glEnable(GL_DEPTH_TEST);
         processInput(window);
     
-        glClearColor(0.6f, 0.8f, 0.9f, 1.0f);
+        glClearColor(.9f, 0.9f, 0.8f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
         glUseProgram(shaderProgram);
@@ -225,15 +166,16 @@ int main() {
         particleRenderer.update(mpmSim.particles);
         
         // ! Util Drawing 
-        drawGridLines(shaderProgram);
         drawAxes(shaderProgram, 10.0f);
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f); 
+        mpmSim.grid.draw();
 
         // ! Draw Plane
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
-        myPlane.draw();
+        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
+        // myPlane.draw();
 
         // ! Draw Particles
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 1.0f, 0.0f, 0.0f); // red
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.5f, 0.5f); // red
         particleRenderer.draw();
 
         // ! Draw Mesh
