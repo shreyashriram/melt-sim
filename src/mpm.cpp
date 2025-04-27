@@ -15,7 +15,7 @@ bool alreadyPrinted = false; //for debugging
 MPMSimulation::MPMSimulation() 
     : youngsModulus(1.0e5f),  // Much lower stiffness for liquid-like behavior
       poissonsRatio(0.49f),    // Very close to 0.5 for incompressible fluid
-      grid(5, 0.5f), 
+      grid(10, 0.5f), 
       yieldThreshold(0.01f),   // Very low yield threshold for fluid-like flow
       meltRate(2.0f),          // Increased melt rate for more noticeable changes
       globalMeltProgress(0.0f) {
@@ -37,7 +37,7 @@ void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
     Particle p;
     for (auto& pt : sampledPoints) {
         // Give initial downward velocity and slight horizontal motion
-        float mesh_translate = 1.5f;
+        float mesh_translate = .75f;
 
         p = Particle(glm::vec3(pt.x()+mesh_translate, pt.y()+mesh_translate, pt.z()+mesh_translate), 
                     glm::vec3(0.0f, -2.0f, 0.0f));  // Moderate initial velocity
@@ -68,7 +68,7 @@ void MPMSimulation::step(float dt) {
         n.velocity = glm::vec3(0.0f);
         n.force = glm::vec3(0.0f);
         n.mass = 0.0f;
-        n.fluidFraction = 0.0f;  // Reset fluid fraction
+        // n.fluidFraction = 0.0f;  // Reset fluid fraction
     }
     
     transferParticlesToGrid();
@@ -83,8 +83,11 @@ void MPMSimulation::transferParticlesToGrid() {
     std::vector<int> nodeParticleCounts(grid.nodes.size(), 0);
 
     for (const auto& p : particles) {
+        
+        
         glm::vec3 cellIdx = (p.position / grid.spacing);
         glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
+
         
         for (int i = -1; i <= 1; ++i) {
             for (int j = -1; j <= 1; ++j) {
@@ -103,6 +106,7 @@ void MPMSimulation::transferParticlesToGrid() {
                     glm::vec3 nodePos = (glm::vec3(nodeIdx) * grid.spacing);
                     float weight = computeWeight(p.position, nodePos);
     
+                    // ! DAMPING 
                     // Minimal damping based on particle count
                     float damping = 1.0f;
                     if (nodeParticleCounts[linearIdx] > 4) {
@@ -113,23 +117,21 @@ void MPMSimulation::transferParticlesToGrid() {
                     }
 
                     grid.nodes[linearIdx].mass += p.mass * weight;
-                    grid.nodes[linearIdx].velocity += p.mass * p.velocity * weight * damping;
-                    
-                    // Transfer fluid fraction (weighted by mass)
-                    grid.nodes[linearIdx].fluidFraction += p.mass * p.meltStatus * weight;
+                    grid.nodes[linearIdx].velocity += p.mass * p.velocity * weight * damping;                    
                 }
             }
         }
     }
     
-    // Normalize velocity and fluid fraction
+    // Normalize velocity by mass to get average 
     for (size_t i = 0; i < grid.nodes.size(); ++i) {
         if (grid.nodes[i].mass > 0.0f) {
             grid.nodes[i].velocity /= grid.nodes[i].mass;
             
             // Normalize fluid fraction by mass
-            grid.nodes[i].fluidFraction /= grid.nodes[i].mass;
+            // grid.nodes[i].fluidFraction /= grid.nodes[i].mass;
             
+            // ! DAMPING 
             // Minimal damping for overcrowded nodes
             if (nodeParticleCounts[i] > 4) {
                 grid.nodes[i].velocity *= 0.99f;
@@ -185,50 +187,50 @@ void MPMSimulation::updateGrid(float dt) {
             
             // Apply velocity diffusion for fluid-like behavior
             // This simulates viscosity in fluid regions
-            if (node.fluidFraction > 0.1f) {
-                glm::vec3 avgNeighborVel(0.0f);
-                float totalWeight = 0.0f;
-                
-                // Extract 3D indices from linear index
-                int z = idx / (grid.size * grid.size);
-                int remainder = idx % (grid.size * grid.size);
-                int y = remainder / grid.size;
-                int x = remainder % grid.size;
-                glm::ivec3 nodeIdx(x, y, z);
-                
-                // Look at neighboring grid nodes
-                for (int i = -1; i <= 1; ++i) {
-                    for (int j = -1; j <= 1; ++j) {
-                        for (int k = -1; k <= 1; ++k) {
-                            if (i == 0 && j == 0 && k == 0) continue; // Skip self
-                            
-                            glm::ivec3 neighborIdx = nodeIdx + glm::ivec3(i, j, k);
-                            if (neighborIdx.x < 0 || neighborIdx.x >= grid.size || 
-                                neighborIdx.y < 0 || neighborIdx.y >= grid.size || 
-                                neighborIdx.z < 0 || neighborIdx.z >= grid.size) {
-                                continue;
-                            }
-                            
-                            int linearIdx = neighborIdx.x + neighborIdx.y * grid.size + 
-                                           neighborIdx.z * grid.size * grid.size;
-                                           
-                            if (grid.nodes[linearIdx].mass > 0.0f) {
-                                avgNeighborVel += grid.nodes[linearIdx].velocity;
-                                totalWeight += 1.0f;
-                            }
+            
+            glm::vec3 avgNeighborVel(0.0f);
+            float totalWeight = 0.0f;
+            
+            // Extract 3D indices from linear index
+            int z = idx / (grid.size * grid.size);
+            int remainder = idx % (grid.size * grid.size);
+            int y = remainder / grid.size;
+            int x = remainder % grid.size;
+            glm::ivec3 nodeIdx(x, y, z);
+            
+            // Look at neighboring grid nodes
+            for (int i = -1; i <= 1; ++i) {
+                for (int j = -1; j <= 1; ++j) {
+                    for (int k = -1; k <= 1; ++k) {
+                        if (i == 0 && j == 0 && k == 0) continue; // Skip self
+                        
+                        glm::ivec3 neighborIdx = nodeIdx + glm::ivec3(i, j, k);
+                        if (neighborIdx.x < 0 || neighborIdx.x >= grid.size || 
+                            neighborIdx.y < 0 || neighborIdx.y >= grid.size || 
+                            neighborIdx.z < 0 || neighborIdx.z >= grid.size) {
+                            continue;
+                        }
+                        
+                        int linearIdx = neighborIdx.x + neighborIdx.y * grid.size + 
+                                        neighborIdx.z * grid.size * grid.size;
+                                        
+                        if (grid.nodes[linearIdx].mass > 0.0f) {
+                            avgNeighborVel += grid.nodes[linearIdx].velocity;
+                            totalWeight += 1.0f;
                         }
                     }
                 }
-                
-                if (totalWeight > 0.0f) {
-                    avgNeighborVel /= totalWeight;
-                    // Blend velocity with neighbors based on fluid fraction
-                    // This creates viscosity-like behavior
-                    float diffusionStrength = 0.2f * node.fluidFraction;
-                    node.velocity = glm::mix(node.velocity, avgNeighborVel, diffusionStrength);
-                }
             }
             
+            if (totalWeight > 0.0f) {
+                avgNeighborVel /= totalWeight;
+                // Blend velocity with neighbors based on fluid fraction
+                // This creates viscosity-like behavior
+                float diffusionStrength = 0.2f;
+                node.velocity = glm::mix(node.velocity, avgNeighborVel, diffusionStrength);
+            }
+    
+    
             // Apply minimal damping and update velocity
             node.velocity *= 0.999f;  // Minimal damping
             node.velocity += (node.force / node.mass) * dt;
@@ -365,7 +367,6 @@ float MPMSimulation::computeWeight(const glm::vec3& particlePos, const glm::vec3
     return w.x * w.y * w.z;
 }
 
-
 glm::vec3 MPMSimulation::computeWeightGradient(const glm::vec3& particlePos, const glm::vec3& nodePos) {
     glm::vec3 rel = (particlePos - nodePos) / grid.spacing;
     glm::vec3 grad(0.0f);
@@ -417,9 +418,6 @@ glm::vec3 MPMSimulation::computeWeightGradient(const glm::vec3& particlePos, con
 
     return grad;
 }
-
-
-
 
 void MPMSimulation::polarDecomposition(const glm::mat3& F, glm::mat3& R, glm::mat3& S){
     /*static bool firstDecomp = true;
@@ -591,7 +589,6 @@ void MPMSimulation::updatePlasticity(Particle& p, float dt) {
         p.J = glm::determinant(p.F);
     }
 }
-
 
 glm::mat3 MPMSimulation::computeStress(const Particle& p) {
     // Check for numerical instability in deformation gradient
