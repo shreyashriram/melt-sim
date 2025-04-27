@@ -7,6 +7,7 @@ out vec3 FragPos;
 out vec3 Normal;
 out vec2 TexCoord;
 out float DistFromCenter;
+out vec4 ParticleParams; // Pass particle data to fragment shader
 
 uniform mat4 model;
 uniform mat4 view;
@@ -36,6 +37,9 @@ void main() {
     
     // Calculate distance from center for the fragment shader
     DistFromCenter = length(aPos.xy);
+    
+    // Pass particle parameters to fragment shader for unique water effects
+    ParticleParams = aParticleData;
     
     gl_Position = projection * view * model * vec4(vertPos, 1.0);
 }

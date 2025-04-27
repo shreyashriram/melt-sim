@@ -19,6 +19,13 @@ public:
     // Draw the particles as fluid-like splats
     void draw(const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection);
 
+    // Set parameters for the fluid rendering
+    void setMetaballThreshold(float threshold) { metaballThreshold = threshold; }
+    void setMetaballStrength(float strength) { metaballStrength = strength; }
+    void setDropletScale(float scale) { dropletScale = scale; }
+    void setDropletIntensity(float intensity) { dropletIntensity = intensity; }
+    void enableWaterDroplets(bool enable) { waterDropletsEnabled = enable; }
+
 private:
     unsigned int VAO, VBO, instanceVBO;
     unsigned int shaderProgram;
@@ -26,9 +33,26 @@ private:
     std::vector<glm::vec4> particleData; // Position (xyz) and size (w)
     size_t numParticles;
     
+    // Splatter parameters
     float radius;
     float smoothing;
     
+    // Metaball parameters
+    float metaballThreshold;
+    float metaballStrength;
+    
+    // Water droplet parameters
+    float dropletScale;
+    float dropletIntensity;
+    bool waterDropletsEnabled;
+    
+    // Texture for water droplets
+    unsigned int waterTexture;
+    bool waterTextureLoaded;
+    
     // Helper method to create embedded shader program (fallback)
     unsigned int createEmbeddedShaderProgram();
+    
+    // Helper method to load or generate water texture
+    unsigned int createWaterDropletTexture();
 };

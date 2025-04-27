@@ -77,6 +77,7 @@ add_executable(MeltSim
     src/gridRenderer.h
     src/particleSplatter.cpp
     src/particleSplatter.h
+
 )
 
 # Now you can add include directories

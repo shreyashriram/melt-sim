@@ -2,10 +2,16 @@
 #include <iostream>
 #include <glm/gtc/type_ptr.hpp>
 #include "shader_utils.h" // Import your shader utilities
+#include <cmath>
 
-ParticleSplatter::ParticleSplatter() : VAO(0), VBO(0), instanceVBO(0), 
-                                       shaderProgram(0), numParticles(0),
-                                       radius(0.05f), smoothing(0.8f) {}
+ParticleSplatter::ParticleSplatter() 
+    : VAO(0), VBO(0), instanceVBO(0), 
+      shaderProgram(0), numParticles(0),
+      radius(0.05f), smoothing(0.8f),
+      metaballThreshold(1.0f), metaballStrength(0.5f),
+      dropletScale(15.0f), dropletIntensity(0.5f),
+      waterDropletsEnabled(true), 
+      waterTexture(0), waterTextureLoaded(false) {}
 
 ParticleSplatter::~ParticleSplatter() {
     glDeleteVertexArrays(1, &VAO);
@@ -13,6 +19,9 @@ ParticleSplatter::~ParticleSplatter() {
     glDeleteBuffers(1, &instanceVBO);
     if (shaderProgram != 0) {
         glDeleteProgram(shaderProgram);
+    }
+    if (waterTextureLoaded) {
+        glDeleteTextures(1, &waterTexture);
     }
 }
 
@@ -77,7 +86,83 @@ void ParticleSplatter::init(float particleRadius, float smoothingKernel) {
     
     glBindVertexArray(0);
     
+    // Create water droplet texture if needed
+    if (waterDropletsEnabled) {
+        waterTexture = createWaterDropletTexture();
+        waterTextureLoaded = (waterTexture != 0);
+    }
+    
     std::cout << "Fluid splatter initialized with radius: " << radius << std::endl;
+    std::cout << "Metaball effect: threshold = " << metaballThreshold << ", strength = " << metaballStrength << std::endl;
+    std::cout << "Water droplets: " << (waterDropletsEnabled ? "enabled" : "disabled") 
+              << ", scale = " << dropletScale 
+              << ", intensity = " << dropletIntensity << std::endl;
+}
+
+unsigned int ParticleSplatter::createWaterDropletTexture() {
+    // Size of the texture
+    const int texWidth = 512;
+    const int texHeight = 512;
+    
+    // Allocate memory for texture data
+    unsigned char* texData = new unsigned char[texWidth * texHeight * 4]; // RGBA
+    
+    // Generate a procedural water droplet texture
+    for (int y = 0; y < texHeight; y++) {
+        for (int x = 0; x < texWidth; x++) {
+            float u = (float)x / texWidth;
+            float v = (float)y / texHeight;
+            
+            // Center coordinates
+            float cx = u - 0.5f;
+            float cy = v - 0.5f;
+            
+            // Distance from center
+            float dist = sqrt(cx*cx + cy*cy);
+            
+            // Create a basic droplet pattern
+            float droplet = std::max(0.0f, 1.0f - dist * 2.0f);
+            droplet = pow(droplet, 2.0f); // Shape the falloff
+            
+            // Add some noise for texture
+            float noise = (float)rand() / RAND_MAX * 0.1f;
+            
+            // Add a highlight effect
+            float highlight = std::max(0.0f, 1.0f - dist * 3.0f);
+            highlight = pow(highlight, 5.0f); // Sharp highlight
+            
+            // Final combined effect
+            float alpha = std::min(1.0f, droplet + highlight);
+            
+            // Set RGBA values
+            int index = (y * texWidth + x) * 4;
+            texData[index + 0] = (unsigned char)(255 * (0.8f + 0.2f * droplet)); // R
+            texData[index + 1] = (unsigned char)(255 * (0.9f + 0.1f * droplet)); // G
+            texData[index + 2] = (unsigned char)(255 * (1.0f)); // B
+            texData[index + 3] = (unsigned char)(255 * alpha); // A
+        }
+    }
+    
+    // Generate OpenGL texture
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    
+    // Set texture parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
+    // Upload texture data
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, texData);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    
+    // Free memory
+    delete[] texData;
+    
+    std::cout << "Water droplet texture created with ID: " << textureID << std::endl;
+    return textureID;
 }
 
 void ParticleSplatter::update(const std::vector<Particle>& particles) {
@@ -184,6 +269,58 @@ void ParticleSplatter::draw(const glm::mat4& model, const glm::mat4& view, const
         glUniform1f(smoothingLoc, smoothing);
     }
     
+    // Set metaball-specific uniforms
+    GLint metaballThresholdLoc = glGetUniformLocation(shaderProgram, "metaballThreshold");
+    if (metaballThresholdLoc != -1) {
+        glUniform1f(metaballThresholdLoc, metaballThreshold);
+    }
+    
+    GLint metaballStrengthLoc = glGetUniformLocation(shaderProgram, "metaballStrength");
+    if (metaballStrengthLoc != -1) {
+        glUniform1f(metaballStrengthLoc, metaballStrength);
+    }
+    
+    // Set water droplet-specific uniforms
+    GLint enableWaterDropletsLoc = glGetUniformLocation(shaderProgram, "enableWaterDroplets");
+    if (enableWaterDropletsLoc != -1) {
+        glUniform1i(enableWaterDropletsLoc, waterDropletsEnabled ? 1 : 0);
+    }
+    
+    GLint dropletScaleLoc = glGetUniformLocation(shaderProgram, "dropletScale");
+    if (dropletScaleLoc != -1) {
+        glUniform1f(dropletScaleLoc, dropletScale);
+    }
+    
+    GLint dropletIntensityLoc = glGetUniformLocation(shaderProgram, "dropletIntensity");
+    if (dropletIntensityLoc != -1) {
+        glUniform1f(dropletIntensityLoc, dropletIntensity);
+    }
+    
+    // Pass all particle positions for metaball calculation
+    GLint numParticlesLoc = glGetUniformLocation(shaderProgram, "numParticles");
+    if (numParticlesLoc != -1) {
+        // Limit number of particles for metaball calculation for performance
+        int maxMetaballParticles = std::min((int)numParticles, 100);
+        glUniform1i(numParticlesLoc, maxMetaballParticles);
+        
+        GLint particlePositionsLoc = glGetUniformLocation(shaderProgram, "particlePositions");
+        if (particlePositionsLoc != -1) {
+            // Pass the first 100 (or fewer) particle positions for metaball calculation
+            glUniform4fv(particlePositionsLoc, maxMetaballParticles, glm::value_ptr(particleData[0]));
+        }
+    }
+    
+    // Bind water droplet texture if enabled
+    if (waterDropletsEnabled && waterTextureLoaded) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, waterTexture);
+        
+        GLint waterTextureLoc = glGetUniformLocation(shaderProgram, "waterTexture");
+        if (waterTextureLoc != -1) {
+            glUniform1i(waterTextureLoc, 0); // Texture unit 0
+        }
+    }
+    
     // Draw particles as instanced quads
     glBindVertexArray(VAO);
     glDrawArraysInstanced(GL_TRIANGLES, 0, 6, numParticles);
@@ -195,149 +332,194 @@ void ParticleSplatter::draw(const glm::mat4& model, const glm::mat4& view, const
     glBlendFunc(blendSrcRGB, blendDestRGB);
 }
 
-// Create shaders using embedded code (fallback if external shaders not found)
+// Create updated shaders using embedded code (fallback if external shaders not found)
 unsigned int ParticleSplatter::createEmbeddedShaderProgram() {
-    // Vertex shader compatible with your existing shader format
+    // Vertex shader with metaball and water droplet support
     const char* vertexShaderSource = R"(
         #version 330 core
-out vec4 FragColor;
+        layout (location = 0) in vec3 aPos;
+        layout (location = 1) in vec3 aNormal;
+        layout (location = 2) in vec4 aParticleData; // xyz = position, w = size
 
-in vec3 FragPos;
-in vec3 Normal;
-in vec2 TexCoord;
-in float DistFromCenter;
+        out vec3 FragPos;
+        out vec3 Normal;
+        out vec2 TexCoord;
+        out float DistFromCenter;
+        out vec4 ParticleParams; // Pass particle data to fragment shader
 
-uniform vec3 lightPos;
-uniform vec3 viewPos;
-uniform vec3 lightColor;
-uniform vec3 objectColor;
-uniform float smoothing = 0.8;
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 projection;
 
-void main() {
-    // Calculate distance from center of splat
-    float dist = length(TexCoord - vec2(0.5));
-    
-    // Sharp cutoff at edge with minimal softening
-    // We want overlapping but distinct particles
-    float edge = 0.45;
-    float mask = smoothstep(0.5, edge, dist);
-    
-    // Discard fragments outside the particle
-    if (mask < 0.05)
-        discard;
-    
-    // Much more uniform lighting across the particle
-    // This is key to reducing the "ball" appearance
-    vec3 norm = normalize(Normal);
-    vec3 lightDir = normalize(lightPos - FragPos);
-    vec3 viewDir = normalize(viewPos - FragPos);
-    
-    // Minimal ambient variation - more uniform color
-    float ambientStrength = 0.4;
-    vec3 ambient = ambientStrength * lightColor;
-    
-    // Reduced diffuse lighting effect to make particles look less rounded
-    float diff = max(dot(norm, lightDir), 0.0) * 0.4; // Reducing diffuse impact by 60%
-    vec3 diffuse = diff * lightColor;
-    
-    // Very minimal specular to avoid "water droplet" look
-    float specularStrength = 0.1; // Greatly reduced from 0.8
-    vec3 halfwayDir = normalize(lightDir + viewDir);
-    float spec = pow(max(dot(norm, halfwayDir), 0.0), 16.0); // Less sharp highlights
-    vec3 specular = specularStrength * spec * lightColor;
-    
-    // Almost no depth variation within each particle
-    // This helps create a more uniform fluid appearance
-    float depthFactor = 0.95; // Almost constant value
-    
-    // Very minimal color variation from center to edge
-    vec3 fluidColor = objectColor * (1.0 + (0.05 * (1.0 - dist))); // Only 5% variation
-    
-    // Combine lighting with minimal variations
-    vec3 result = (ambient + diffuse + specular) * fluidColor * depthFactor;
-    
-    // Sharp alpha falloff at edges when particles overlap
-    // This creates a surface tension effect rather than blurry blending
-    float alphaFactor = smoothstep(0.0, 0.25, mask);
-    float alpha = mix(0.9, 0.7, dist * 0.3) * alphaFactor; // Less transparency variation
-    
-    FragColor = vec4(result, alpha);
-}
+        void main() {
+            // Extract particle data
+            vec3 particlePos = aParticleData.xyz;
+            float particleSize = aParticleData.w;
+            
+            // Calculate billboarding vectors
+            vec3 camRight = normalize(vec3(view[0][0], view[1][0], view[2][0]));
+            vec3 camUp = normalize(vec3(view[0][1], view[1][1], view[2][1]));
+            
+            // Generate billboarded vertex position
+            vec3 vertPos = particlePos + camRight * aPos.x * particleSize + camUp * aPos.y * particleSize;
+            
+            // Use normal perpendicular to camera plane (for lighting)
+            vec3 faceNormal = -normalize(vec3(view[0][2], view[1][2], view[2][2]));
+            
+            // We need to convert these to world space for our existing shader format
+            FragPos = vec3(model * vec4(vertPos, 1.0));
+            Normal = mat3(transpose(inverse(model))) * faceNormal;
+            
+            // Pass texture coordinates for the splat
+            TexCoord = aPos.xy + 0.5; // Convert from [-0.5, 0.5] to [0, 1]
+            
+            // Calculate distance from center for the fragment shader
+            DistFromCenter = length(aPos.xy);
+            
+            // Pass particle parameters to fragment shader for unique water effects
+            ParticleParams = aParticleData;
+            
+            gl_Position = projection * view * model * vec4(vertPos, 1.0);
+        }
     )";
-    
-    // Fragment shader compatible with your existing shader format
+    const char* fragmentShaderSource = R"(
+        #version 330 core
+        out vec4 FragColor;
 
-const char* fragmentShaderSource = R"(
-    #version 330 core
-    out vec4 FragColor;
-    
-    in vec3 FragPos;
-    in vec3 Normal;
-    in vec2 TexCoord;
-    in float DistFromCenter;
-    
-    uniform vec3 lightPos;
-    uniform vec3 viewPos;
-    uniform vec3 lightColor;
-    uniform vec3 objectColor;
-    uniform float smoothing = 0.8;
-    
-    void main() {
-        // Calculate distance from center of splat
-        float dist = length(TexCoord - vec2(0.5));
-        
-        // Improved circular mask with much softer edges
-        float edge = mix(0.5, 0.25, smoothing); 
-        float mask = smoothstep(0.5, edge, dist);
-        
-        // Extended influence - allows blending even beyond the normal radius
-        float extendedMask = smoothstep(0.7, edge, dist);
-        
-        // Discard only the very distant fragments
-        if (extendedMask < 0.001)
-            discard;
-        
-        // Normal lighting calculation
-        vec3 norm = normalize(Normal);
-        vec3 lightDir = normalize(lightPos - FragPos);
-        vec3 viewDir = normalize(viewPos - FragPos);
-        
-        // Ambient light
-        float ambientStrength = 0.3;
-        vec3 ambient = ambientStrength * lightColor;
-        
-        // Diffuse
-        float diff = max(dot(norm, lightDir), 0.0);
-        vec3 diffuse = diff * lightColor;
-        
-        // Specular (Blinn-Phong) 
-        float specularStrength = 0.8;
-        vec3 halfwayDir = normalize(lightDir + viewDir);
-        float spec = pow(max(dot(norm, halfwayDir), 0.0), 128.0);
-        vec3 specular = specularStrength * spec * lightColor;
-        
-        // Enhanced water-like effect with improved depth perception
-        float depthFactor = mix(0.7, 1.0, 1.0 - dist * 1.8);
-        
-        // Improved color gradient from center to edge
-        vec3 coreColor = objectColor * 1.1;
-        vec3 edgeColor = mix(objectColor, vec3(0.9, 0.95, 1.0), 0.3);
-        vec3 waterColor = mix(edgeColor, coreColor, smoothstep(0.3, 0.0, dist));
-        
-        // Final lighting calculation
-        vec3 result = (ambient + diffuse + specular) * waterColor * depthFactor;
-        
-        // Much more gradual transparency from center to edge
-        float baseAlpha = mix(0.95, 0.0, pow(dist * 1.2, 1.5));
-        float finalAlpha = mix(mask, extendedMask, 0.6) * baseAlpha;
-        
-        // Add a slight glow effect to enhance the fluid appearance
-        vec3 glowColor = mix(result, objectColor * 1.5, 0.1);
-        result = mix(result, glowColor, smoothstep(0.4, 0.0, dist));
-        
-        FragColor = vec4(result, finalAlpha);
-    }
-)";
+        in vec3 FragPos;
+        in vec3 Normal;
+        in vec2 TexCoord;
+        in float DistFromCenter;
+        in vec4 ParticleParams; // xyz = position, w = size
+
+        // Metaball parameters
+        uniform int numParticles;         // Total number of particles
+        uniform vec4 particlePositions[100]; // Array of particle positions (increase if needed)
+        uniform float metaballThreshold = 1.0;  // Threshold for metaball effect
+        uniform float metaballStrength = 0.5;   // Strength of metaball effect
+
+        // Standard lighting parameters
+        uniform vec3 lightPos;
+        uniform vec3 viewPos;
+        uniform vec3 lightColor;
+        uniform vec3 objectColor;
+        uniform float smoothing = 0.8;
+
+        // Water droplet parameters
+        uniform bool enableWaterDroplets = true;
+        uniform float dropletScale = 15.0;     // Scale of water droplet pattern
+        uniform float dropletIntensity = 0.5;  // Intensity of the water droplet effect
+        uniform sampler2D waterTexture;        // Optional texture for water droplets
+
+        // Random functions for noise
+        float random(vec2 st) {
+            return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+        }
+
+        float noise(vec2 st) {
+            vec2 i = floor(st);
+            vec2 f = fract(st);
+            
+            // Four corners in 2D of a tile
+            float a = random(i);
+            float b = random(i + vec2(1.0, 0.0));
+            float c = random(i + vec2(0.0, 1.0));
+            float d = random(i + vec2(1.0, 1.0));
+
+            // Smooth interpolation
+            vec2 u = f * f * (3.0 - 2.0 * f);
+
+            return mix(a, b, u.x) + 
+                (c - a) * u.y * (1.0 - u.x) + 
+                (d - b) * u.x * u.y;
+        }
+
+        // Function to create water droplet pattern
+        float waterDropletPattern(vec2 uv, float scale, float time) {
+            float n = noise(uv * scale);
+            
+            // Create water droplet effect by adding multiple noise layers
+            float droplet = smoothstep(0.4, 0.5, n);
+            
+            // Add some variation for more natural look
+            droplet += 0.1 * noise(uv * scale * 2.0 + vec2(time * 0.1));
+            
+            return droplet;
+        }
+
+        void main() {
+            // Calculate distance from center of splat
+            float dist = length(TexCoord - vec2(0.5));
+            
+            // Basic mask with sharp cutoff
+            float edge = 0.45;
+            float mask = smoothstep(0.5, edge, dist);
+            
+            // Discard fragments outside the particle
+            if (mask < 0.05)
+                discard;
+            
+            // Standard lighting calculation
+            vec3 norm = normalize(Normal);
+            vec3 lightDir = normalize(lightPos - FragPos);
+            vec3 viewDir = normalize(viewPos - FragPos);
+            
+            float ambientStrength = 0.4;
+            vec3 ambient = ambientStrength * lightColor;
+            
+            float diff = max(dot(norm, lightDir), 0.0) * 0.4;
+            vec3 diffuse = diff * lightColor;
+            
+            float specularStrength = 0.1;
+            vec3 halfwayDir = normalize(lightDir + viewDir);
+            float spec = pow(max(dot(norm, halfwayDir), 0.0), 16.0);
+            vec3 specular = specularStrength * spec * lightColor;
+            
+            // Generate water droplet texture
+            float droplet = 0.0;
+            if (enableWaterDroplets) {
+                // Use particle position as a unique seed for variation
+                vec2 seed = vec2(ParticleParams.x * 10.0, ParticleParams.y * 10.0);
+                
+                // Create water droplet pattern
+                droplet = waterDropletPattern(TexCoord * 3.0 + seed, dropletScale, 0.0);
+                droplet *= dropletIntensity;
+            }
+            
+            // Apply water droplet effect to normal and color
+            vec3 adjustedNormal = normalize(norm + vec3(droplet * 0.1, droplet * 0.1, 0.0));
+            
+            // Metaball calculation - influences the alpha
+            float metaballField = 0.0;
+            // Self contribution
+            metaballField += 1.0 / (dist * dist + 0.01) * metaballStrength;
+            
+            // Apply the base color with water droplet effect
+            float dropletHighlight = droplet * 0.2;
+            vec3 fluidColor = objectColor * (1.0 + (0.05 * (1.0 - dist) + dropletHighlight));
+            
+            // Enhanced fluid appearance with varying depth and color
+            float depthFactor = 0.95 - droplet * 0.1;
+            
+            // Combine lighting
+            vec3 result = (ambient + diffuse + specular) * fluidColor * depthFactor;
+            
+            // Enhanced alpha for metaball effect
+            float alphaFactor = smoothstep(0.0, 0.25, mask);
+            float baseAlpha = mix(0.9, 0.7, dist * 0.3) * alphaFactor;
+            
+            // Add subtle refraction at the edges
+            float refractionFactor = 0.05 * (1.0 - mask) * (1.0 + droplet);
+            result += refractionFactor * vec3(0.8, 0.9, 1.0);
+            
+            // Add subtle water caustics effect
+            float causticEffect = noise(TexCoord * 20.0) * noise(TexCoord * 15.0 + vec2(0.2, 0.3));
+            result += causticEffect * 0.1 * baseAlpha * vec3(0.8, 0.95, 1.0);
+            
+            // Final color
+            FragColor = vec4(result, baseAlpha);
+        }
+    )";
     
     // Compile and link the shaders
     unsigned int vertexShader, fragmentShader;
@@ -387,3 +569,5 @@ const char* fragmentShaderSource = R"(
     
     return program;
 }
+    // Fragment shader with metaball and water droplet effects
+    
