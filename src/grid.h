@@ -19,6 +19,14 @@ public:
     
     std::vector<GridNode> nodes;
 
+    void setupBuffers(); 
+    void draw() const;          
+
+private:
+    unsigned int VAO, VBO;
+    
+    bool initialized = false;
+
 };
 
 
