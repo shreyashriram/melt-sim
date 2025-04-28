@@ -12,12 +12,12 @@
 bool alreadyPrinted = false; //for debugging 
 
 MPMSimulation::MPMSimulation() 
-    : youngsModulus(1.0e5f),  // Much lower stiffness for liquid-like behavior
-      poissonsRatio(0.49f),    // Very close to 0.5 for incompressible fluid
+    : youngsModulus(2.0e4f),  // Higher stiffness for better stability
+      poissonsRatio(0.4f),    // Less extreme for better stability
       grid(5, 0.5f), 
-      yieldThreshold(0.01f),   // Very low yield threshold for fluid-like flow
-      meltRate(2.0f),          // Increased melt rate for more noticeable changes
-      globalMeltProgress(0.0f) {
+      yieldThreshold(0.05f),  // Higher threshold for more stability
+      meltRate(1.5f),         // More moderate melt rate
+      globalMeltProgress(0.0f) { // Start fully solid
     
     grid.setupBuffers();
     
@@ -31,62 +31,58 @@ MPMSimulation::MPMSimulation()
 }
 
 
-// TODO: make sure its in grid, currently manually translated
 void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
     Particle p;
     for (auto& pt : sampledPoints) {
-        // Give initial downward velocity and slight horizontal motion
-        float mesh_translate = 1.25f;
+        // Position the mesh higher for a longer fall
+        float mesh_translate = 2.5f;
 
         p = Particle(glm::vec3(pt.x()+0.75, pt.y()+mesh_translate, pt.z()+0.75), 
-                    glm::vec3(0.0f, -2.0f, 0.0f));  // Moderate initial velocity
-        p.meltStatus = 0.0f;  // Start as solid
+                    glm::vec3(0.0f, -1.0f, 0.0f));  // Initial downward velocity
+        p.meltStatus = 0.0f;  // Start as fully solid
         particles.push_back(p);
     }
 }
 
-// ? Debugging: Manually create particles
 void MPMSimulation::initializeParticles() {
     particles.clear(); 
     
-    Particle p;  //declare the Particle variable
+    Particle p;
     for (int i = 0; i < 5; i++) {
-        p = Particle(glm::vec3(i*0.2f, 0.5f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f));
-
+        p = Particle(glm::vec3(i*0.2f, 3.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
+        p.meltStatus = 0.0f; // Start as solid
         particles.push_back(p);
     }
 }
 
 void MPMSimulation::step(float dt) {
+    // Limit dt for stability
+    float stableDt = glm::min(dt, 0.03f);
+    
+    // Progress the global melting over time (more controlled)
+    globalMeltProgress += stableDt * 0.05f; // Even slower, more stable melting
+    globalMeltProgress = glm::clamp(globalMeltProgress, 0.0f, 1.0f);
 
-    // std::cout << "Step start -- dt: " << dt << std::endl;
-    // std::cout << "First particle pos: " << particles[0].position.y << ", vel: " << particles[0].velocity.y << std::endl;
-
-    // reset grid
+    // Reset grid
     for (auto& n : grid.nodes) {
         n.velocity = glm::vec3(0.0f);
         n.force = glm::vec3(0.0f);
         n.mass = 0.0f;
-        // n.fluidFraction = 0.0f;  // Reset fluid fraction
     }
     
     transferParticlesToGrid();
-    updateGrid(dt);
-    transferGridToParticles(dt);
-    updateParticles(dt);
+    updateGrid(stableDt);
+    transferGridToParticles(stableDt);
+    updateParticles(stableDt);
 }
 
-// STEP 1 IN MPM GUIDE
 void MPMSimulation::transferParticlesToGrid() { 
     // Add a local counter for each grid cell
     std::vector<int> nodeParticleCounts(grid.nodes.size(), 0);
 
     for (const auto& p : particles) {
-        
-        
         glm::vec3 cellIdx = (p.position / grid.spacing);
         glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
-
         
         for (int i = -1; i <= 1; ++i) {
             for (int j = -1; j <= 1; ++j) {
@@ -105,18 +101,23 @@ void MPMSimulation::transferParticlesToGrid() {
                     glm::vec3 nodePos = (glm::vec3(nodeIdx) * grid.spacing);
                     float weight = computeWeight(p.position, nodePos);
     
-                    // ! DAMPING 
-                    // Minimal damping based on particle count
-                    float damping = 1.0f;
+                    // APIC: Add the affine velocity term
+                    glm::vec3 distToNode = nodePos - p.position;
+                    glm::vec3 particleVelocity = p.velocity + p.C * distToNode;
+
+                    // Dynamic damping based on melt status
+                    float damping = 1.0f - (p.meltStatus * 0.02f);
+                    
+                    // Additional damping for crowded cells
                     if (nodeParticleCounts[linearIdx] > 4) {
-                        damping = 0.99f;
+                        damping *= 0.98f;
                     }
                     if (nodeParticleCounts[linearIdx] > 8) {
-                        damping = 0.98f;
+                        damping *= 0.98f;
                     }
 
                     grid.nodes[linearIdx].mass += p.mass * weight;
-                    grid.nodes[linearIdx].velocity += p.mass * p.velocity * weight * damping;                    
+                    grid.nodes[linearIdx].velocity += p.mass * particleVelocity * weight * damping;                    
                 }
             }
         }
@@ -127,22 +128,21 @@ void MPMSimulation::transferParticlesToGrid() {
         if (grid.nodes[i].mass > 0.0f) {
             grid.nodes[i].velocity /= grid.nodes[i].mass;
             
-            // Normalize fluid fraction by mass
-            // grid.nodes[i].fluidFraction /= grid.nodes[i].mass;
-            
-            // ! DAMPING 
-            // Minimal damping for overcrowded nodes
+            // Additional velocity smoothing based on crowding
+            // Acts as a simple incompressibility constraint
+            float damping = 1.0f;
             if (nodeParticleCounts[i] > 4) {
-                grid.nodes[i].velocity *= 0.99f;
+                damping = 0.98f;
             }
             if (nodeParticleCounts[i] > 8) {
-                grid.nodes[i].velocity *= 0.98f;
+                damping = 0.95f;
             }
+            
+            grid.nodes[i].velocity *= damping;
         }
     }
 }
 
-// STEP 2 IN THE MPM GUIDE
 void MPMSimulation::updateGrid(float dt) {
     // First compute forces from stress for each particle
     for (const auto& p : particles) {
@@ -165,10 +165,11 @@ void MPMSimulation::updateGrid(float dt) {
                     glm::vec3 weightGrad = computeWeightGradient(p.position, nodePos);
                     
                     // Force = -volume * stress * weightGrad
-                    glm::vec3 force = -p.volume * (stress * weightGrad);
+                    // Scale forces for stability and smooth transition
+                    float stressScale = 1.0f - (p.meltStatus * 0.3f); // Less reduction for stability
                     
-                    // ! Scale down forces for stability
-                    force *= 0.5f;
+                    // Add force damping for stability
+                    glm::vec3 force = -p.volume * (stress * weightGrad) * stressScale * 0.5f;
                     
                     int linearIdx = nodeIdx.x + nodeIdx.y * grid.size + nodeIdx.z * grid.size * grid.size;
                     grid.nodes[linearIdx].force += force;
@@ -177,16 +178,14 @@ void MPMSimulation::updateGrid(float dt) {
         }
     }
     
-    // Then update grid velocities using forces with fluid-aware diffusion
+    // Update grid velocities using forces with fluid-aware diffusion
     for (size_t idx = 0; idx < grid.nodes.size(); idx++) {
         auto& node = grid.nodes[idx];
         if (node.mass > 0.0f) {
-            // // Add gravity
-            node.force += glm::vec3(0.0f, -9.8f, 0.0f) * node.mass;
+            // Add reduced gravity for better stability
+            node.force += glm::vec3(0.0f, -5.8f, 0.0f) * node.mass;
             
-            // // Apply velocity diffusion for fluid-like behavior
-            // // This simulates viscosity in fluid regions
-            
+            // Apply velocity diffusion for fluid-like behavior
             glm::vec3 avgNeighborVel(0.0f);
             float totalWeight = 0.0f;
             
@@ -223,31 +222,34 @@ void MPMSimulation::updateGrid(float dt) {
             
             if (totalWeight > 0.0f) {
                 avgNeighborVel /= totalWeight;
-                // Blend velocity with neighbors based on fluid fraction
-                // This creates viscosity-like behavior
-                float diffusionStrength = 0.5f;
+                // Moderate diffusion strength for stability
+                float diffusionStrength = 0.4f;
                 node.velocity = glm::mix(node.velocity, avgNeighborVel, diffusionStrength);
             }
-    
-    
-            // Apply minimal damping and update velocity
-            // node.velocity *= 0.999f;  // Minimal damping
-            node.velocity += (node.force / node.mass) * dt;
+            
+            // Apply mild velocity damping for stability
+            node.velocity *= 0.995f;
+            
+            // Update velocity with forces (with damping)
+            node.velocity += (node.force / node.mass) * dt * 0.8f;
+            
+            // Clamp extreme velocities for stability
+            float maxVel = 10.0f;
+            if (glm::length(node.velocity) > maxVel) {
+                node.velocity = glm::normalize(node.velocity) * maxVel;
+            }
         }
     }
 }
 
-// STEP 3 IN MPM GUIDE (basically same as P2G but in opposite direction?)
 void MPMSimulation::transferGridToParticles(float dt) { 
-    static bool firstUpdate = true;
-    
     for (auto& p : particles) {
         glm::vec3 cellIdx = (p.position / grid.spacing);
         glm::ivec3 baseNode = glm::ivec3(floor(cellIdx));
         
         glm::vec3 newVelocity(0.0f);
+        glm::mat3 B(0.0f); // Temporary matrix for computing C
         
-        // Compute PIC velocity transfer
         for (int i = -1; i <= 1; ++i) {
             for (int j = -1; j <= 1; ++j) {
                 for (int k = -1; k <= 1; ++k) {
@@ -266,11 +268,24 @@ void MPMSimulation::transferGridToParticles(float dt) {
                     
                     // PIC update
                     newVelocity += nodeVelocity * weight;
+                    
+                    // Compute affine matrix B for APIC
+                    glm::vec3 distToNode = nodePos - p.position;
+                    B += glm::mat3(
+                        nodeVelocity.x * distToNode.x, nodeVelocity.x * distToNode.y, nodeVelocity.x * distToNode.z,
+                        nodeVelocity.y * distToNode.x, nodeVelocity.y * distToNode.y, nodeVelocity.y * distToNode.z,
+                        nodeVelocity.z * distToNode.x, nodeVelocity.z * distToNode.y, nodeVelocity.z * distToNode.z
+                    ) * weight;
                 }
             }
         }
         
         p.velocity = newVelocity;
+        
+        // Update C (affine velocity field)
+        float scale = 4.0f / (grid.spacing * grid.spacing);
+        p.C = B * scale;
+        
         p.velocityGradient = computeVelocityGradient(p);
         
         // Update deformation gradient
@@ -284,57 +299,118 @@ void MPMSimulation::updateParticles(float dt) {
     float gridBoundary = grid.size * grid.spacing;
     
     for (auto& p : particles) {
-        // Position-based melting
-        // Define a transition height - above this height particles are solid,
-        // below this height they are liquid
-        float transitionHeight = 0.05f; // Lowered from 1.0f to 0.2f
-        float transitionWidth = 0.2f;  // Controls how gradual the transition is
+        // Height-based melting with dependency on global melt progress
+        float fallHeight = 2.5f; // Starting height
+        float floorHeight = 0.2f; // Slightly above the floor
+        float maxMeltDist = fallHeight - floorHeight; // Total distance for complete melting
         
-        // Calculate melt status based on height (y-position)
-        // 1.0 = fully liquid, 0.0 = fully solid
-        if (p.position.y < transitionHeight - transitionWidth) {
-            // Below transition zone - fully liquid
-            p.meltStatus = 1.0f;
-        } 
-        else if (p.position.y > transitionHeight + transitionWidth) {
-            // Above transition zone - fully solid
-            p.meltStatus = 0.0f;
-        }
-        else {
-            // In transition zone - gradual change from liquid to solid
-            float t = (p.position.y - (transitionHeight - transitionWidth)) / (2.0f * transitionWidth);
-            p.meltStatus = 1.0f - t; // Smoothly transition from 1.0 to 0.0
+        // Calculate height-based melt factor (0 = top, 1 = floor)
+        float heightFactor = 1.0f - glm::clamp((p.position.y - floorHeight) / maxMeltDist, 0.0f, 1.0f);
+        
+        // Combine with global melt progress, but more gradual
+        float targetMeltStatus = heightFactor * globalMeltProgress * 0.7f;
+        
+        // Very smooth transition towards target melt state for stability
+        float meltRate = 0.8f;
+        p.meltStatus = glm::mix(p.meltStatus, targetMeltStatus, dt * meltRate);
+        
+        // Apply velocity damping for stability
+        p.velocity *= 0.998f;
+        
+        // Velocity cap for stability
+        float maxVel = 8.0f;
+        if (glm::length(p.velocity) > maxVel) {
+            p.velocity = glm::normalize(p.velocity) * maxVel;
         }
         
-        // Update position based on velocity
-        p.position += p.velocity * dt;
+        // Update position based on velocity with sub-stepping for stability
+        int substeps = 3;
+        float subDt = dt / float(substeps);
+        for (int step = 0; step < substeps; step++) {
+            p.position += p.velocity * subDt;
+            
+            // Apply boundary conditions in each substep
+            // Floor collision
+            if (p.position.y < 0.0f) {
+                p.position.y = 0.0f;
+                
+                float impactVelocity = std::abs(p.velocity.y);
+                
+                // More conservative bounce factors
+                float minBounce = 0.05f;
+                float maxBounce = 0.5f;
+                float velocityFactor = glm::clamp(impactVelocity / 15.0f, 0.0f, 1.0f);
+                
+                // Melt status affects bounce height
+                float fluidBounce = glm::mix(minBounce, maxBounce, velocityFactor);
+                float solidBounce = 0.2f; // Less bounce for solid objects
+                
+                float bounce = glm::mix(solidBounce, fluidBounce, p.meltStatus);
+                
+                // Apply reduced splash velocity
+                p.velocity.y = impactVelocity * bounce;
+                
+                // Add controlled horizontal splash for fluid particles
+                if (p.meltStatus > 0.5f && impactVelocity > 2.0f) {
+                    // Simple pseudo-random number based on particle position
+                    float randX = glm::sin(p.position.x * 43.0f + p.position.z * 17.0f) * 0.5f + 0.5f;
+                    float randZ = glm::cos(p.position.x * 23.0f + p.position.z * 31.0f) * 0.5f + 0.5f;
+                    
+                    // Reduced splash magnitude
+                    float splashMagnitude = impactVelocity * 0.15f;
+                    p.velocity.x += (randX * 2.0f - 1.0f) * splashMagnitude;
+                    p.velocity.z += (randZ * 2.0f - 1.0f) * splashMagnitude;
+                }
+                
+                // Horizontal damping depends on melt status
+                float solidDamping = 0.9f;
+                float liquidDamping = 0.98f;
+                float damping = glm::mix(solidDamping, liquidDamping, p.meltStatus);
+                
+                p.velocity.x *= damping;
+                p.velocity.z *= damping;
+            }
+            
+            // Wall boundaries with conservative splash effects
+            float wallBoundary = gridBoundary - 0.5f; // Larger margin for stability
+            
+            // X-axis boundaries
+            if (p.position.x < 0.1f || p.position.x > wallBoundary) {
+                if (p.position.x < 0.1f) p.position.x = 0.1f;
+                if (p.position.x > wallBoundary) p.position.x = wallBoundary;
+                
+                float impact = glm::abs(p.velocity.x);
+                float bounce = glm::mix(0.2f, 0.5f, p.meltStatus); // Reduced bounce
+                
+                p.velocity.x = -p.velocity.x * bounce;
+                
+                // Reduced vertical splash for stability
+                if (p.meltStatus > 0.5f && impact > 2.0f) {
+                    float splashUp = impact * 0.1f; // Reduced splash
+                    p.velocity.y += splashUp;
+                }
+            }
+            
+            // Z-axis boundaries
+            if (p.position.z < 0.1f || p.position.z > wallBoundary) {
+                if (p.position.z < 0.1f) p.position.z = 0.1f;
+                if (p.position.z > wallBoundary) p.position.z = wallBoundary;
+                
+                float impact = glm::abs(p.velocity.z);
+                float bounce = glm::mix(0.2f, 0.5f, p.meltStatus); // Reduced bounce
+                
+                p.velocity.z = -p.velocity.z * bounce;
+                
+                // Reduced vertical splash for stability
+                if (p.meltStatus > 0.5f && impact > 2.0f) {
+                    float splashUp = impact * 0.1f; // Reduced splash
+                    p.velocity.y += splashUp;
+                }
+            }
+        }
         
         // Apply plasticity to limit deformation
         updatePlasticity(p, dt);
-        
-        // Floor collision with melt-dependent behavior
-        if (p.position.y < 0.0f) {
-            p.position.y = 0.0f;
-            
-            // Calculate impact velocity
-            float impactVelocity = std::abs(p.velocity.y);
-            
-            // Adjust bounce based on melt status
-            float solidBounce = 0.8f;
-            float liquidBounce = 0.3f;
-            float bounce = glm::mix(solidBounce, liquidBounce, p.meltStatus);
-            
-            // Apply bounce to vertical velocity
-            p.velocity.y = impactVelocity * bounce;
-            
-            // Adjust horizontal damping based on melt status
-            float solidDamping = 0.99f;
-            float liquidDamping = 0.95f;
-            float damping = glm::mix(solidDamping, liquidDamping, p.meltStatus);
-            
-            p.velocity.x *= damping;
-            p.velocity.z *= damping;
-        }
     }
 }
 
@@ -364,11 +440,6 @@ glm::vec3 MPMSimulation::computeWeightGradient(const glm::vec3& particlePos, con
     glm::vec3 rel = (particlePos - nodePos) / grid.spacing;
     glm::vec3 grad(0.0f);
 
-    /*std::cout << "=== Weight Gradient Debug ===" << std::endl;
-    std::cout << "Particle Position: (" << particlePos.x << ", " << particlePos.y << ", " << particlePos.z << ")" << std::endl;
-    std::cout << "Node Position: (" << nodePos.x << ", " << nodePos.y << ", " << nodePos.z << ")" << std::endl;
-    std::cout << "Difference (rel): (" << rel.x << ", " << rel.y << ", " << rel.z << ")" << std::endl;
-*/
     for (int dim = 0; dim < 3; ++dim) {
         float x = rel[dim];
         float absX = fabs(x);
@@ -401,31 +472,13 @@ glm::vec3 MPMSimulation::computeWeightGradient(const glm::vec3& particlePos, con
         float wb = weight(rel[b]);
 
         grad[dim] = gradW * wa * wb;
-
-        //std::cout << "dim " << dim << ": x=" << x << ", gradW=" << gradW << ", weight[" << a << "]=" << wa << ", weight[" << b << "]=" << wb << std::endl;
-        //std::cout << "Partial Gradient[" << dim << "] = " << grad[dim] << std::endl;
     }
 
     grad /= grid.spacing;
-    //std::cout << "Final Gradient: (" << grad.x << ", " << grad.y << ", " << grad.z << ")" << std::endl;
-
     return grad;
 }
 
 void MPMSimulation::polarDecomposition(const glm::mat3& F, glm::mat3& R, glm::mat3& S){
-    /*static bool firstDecomp = true;
-    if (firstDecomp) {
-        std::cout << "\n=== Polar Decomposition Debug ===" << std::endl;
-        std::cout << "Input Matrix F:" << std::endl;
-        for(int i = 0; i < 3; i++) {
-            std::cout << "[ ";
-            for(int j = 0; j < 3; j++) {
-                std::cout << F[i][j] << " ";
-            }
-            std::cout << "]" << std::endl;
-        }
-    }*/
-    
     Eigen::Matrix3f F_eigen; //converting the glm::mat3 matrix to Eigen matrix
     for(int i = 0; i < 3; i++) { 
         for(int j = 0; j < 3; j++){
@@ -451,41 +504,6 @@ void MPMSimulation::polarDecomposition(const glm::mat3& F, glm::mat3& R, glm::ma
             S[i][j] = S_eigen(i, j);
         }
     }
-
-   /*if (firstDecomp) {
-        std::cout << "\nSingular Values: " << singularValues.transpose() << std::endl;
-        
-        std::cout << "\nRotation Matrix R:" << std::endl;
-        for(int i = 0; i < 3; i++) {
-            std::cout << "[ ";
-            for(int j = 0; j < 3; j++) {
-                std::cout << R[i][j] << " ";
-            }
-            std::cout << "]" << std::endl;
-        }
-        
-        std::cout << "\nStretch Matrix S:" << std::endl;
-        for(int i = 0; i < 3; i++) {
-            std::cout << "[ ";
-            for(int j = 0; j < 3; j++) {
-                std::cout << S[i][j] << " ";
-            }
-            std::cout << "]" << std::endl;
-        }
-        
-        // Verify properties
-        glm::mat3 reconstructed = R * S;
-        float maxDiff = 0.0f;
-        for(int i = 0; i < 3; i++) {
-            for(int j = 0; j < 3; j++) {
-                maxDiff = std::max(maxDiff, std::abs(reconstructed[i][j] - F[i][j]));
-            }
-        }
-        std::cout << "\nMax difference between F and R*S: " << maxDiff << std::endl;
-        
-        firstDecomp = false;
-    }*/
-
 }
 
 glm::mat3 MPMSimulation::computeVelocityGradient(const Particle& p) {
@@ -527,27 +545,47 @@ glm::mat3 MPMSimulation::computeVelocityGradient(const Particle& p) {
 
 void MPMSimulation::updatePlasticity(Particle& p, float dt) {
     // Skip if deformation is invalid
-    if (p.J <= 0.0f) {
+    if (p.J <= 0.0f || p.J > 10.0f) {
         p.F = glm::mat3(1.0f);
         p.J = 1.0f;
         return;
     }
     
-    // For highly melted material, reset the deviatoric part of F
-    // This is key to fluid-like behavior - fluids don't remember shear deformation
-    if (p.meltStatus > 0.8f) {
-        // Preserve only the volumetric component (J)
-        float J = p.J;
+    // More conservative threshold for stability
+    if (p.meltStatus > 0.5f) {
+        // Preserve volumetric component (J) with safety clamp
+        float J = glm::clamp(p.J, 0.5f, 2.0f);
+        
+        // Add very gentle randomness for fluid-like behavior
+        float jitterAmount = 0.01f * p.meltStatus;
+        float jitter = 1.0f + (glm::sin(p.position.x * 31.0f + p.position.y * 23.0f + p.position.z * 17.0f) * jitterAmount);
+        J *= jitter;
         
         // Reset F to a pure volume-changing matrix (scaled identity)
-        // This cubic root ensures volume is preserved exactly
         float scaleFactor = std::pow(J, 1.0f/3.0f);
-        p.F = glm::mat3(1.0f) * scaleFactor;
+        
+        // More gradual blend towards fluid for stability
+        glm::mat3 fluidF = glm::mat3(1.0f) * scaleFactor;
+        float blendFactor = (p.meltStatus - 0.5f) * 2.0f; // 0 at meltStatus=0.5, 1 at meltStatus=1.0
+        
+        // Blend between current F and fluid F based on melt status
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                p.F[i][j] = glm::mix(p.F[i][j], fluidF[i][j], blendFactor * 0.3f);
+            }
+        }
+        
+        // If fully melted, just use the fluid F directly
+        if (p.meltStatus > 0.9f) {
+            p.F = fluidF;
+        }
+        
+        // Recalculate J after the blend
+        p.J = glm::determinant(p.F);
         return;
     }
     
-    // For partially melted or solid material, use existing plasticity model
-    // but with yield threshold that scales with melt status
+    // For solid material, use a more stable plasticity model
     glm::mat3 R, S;
     polarDecomposition(p.F, R, S);
     
@@ -565,24 +603,24 @@ void MPMSimulation::updatePlasticity(Particle& p, float dt) {
     }
     normDevS = sqrt(normDevS);
     
-    // Yield threshold decreases with melt status
-    float effectiveYieldThreshold = yieldThreshold * (1.0f - 0.9f * p.meltStatus);
+    // More conservative yielding threshold for stability
+    float effectiveYieldThreshold = yieldThreshold * (1.0f - 0.7f * p.meltStatus);
     
-    // Check if yielding occurs
+    // Check if yielding occurs - use more stable approach
     if (normDevS > effectiveYieldThreshold) {
         // Calculate how much to scale back the elastic deformation
         float scale = effectiveYieldThreshold / normDevS;
         
-        // Apply hardening that decreases with melt status
-        float hardeningFactor = 0.5f * (1.0f - p.meltStatus);
+        // Apply more conservative hardening
+        float hardeningFactor = 0.3f * (1.0f - p.meltStatus);
         scale = scale * hardeningFactor + (1.0f - hardeningFactor);
         
         // Create the modified stretch matrix
         glm::mat3 newS = (traceS / 3.0f) * identity + scale * devS;
         
-        // Allow more deformation for melted material
-        float minS = 0.2f + 0.3f * p.meltStatus;  // Lower bound decreases with melt
-        float maxS = 1.5f + 1.0f * p.meltStatus;  // Upper bound increases with melt
+        // Use more conservative deformation limits
+        float minS = 0.3f + 0.2f * p.meltStatus;  // Higher min for stability
+        float maxS = 1.1f + 0.6f * p.meltStatus;  // Lower max for stability
         
         for (int i = 0; i < 3; i++) {
             if (newS[i][i] > maxS) newS[i][i] = maxS;
@@ -591,70 +629,32 @@ void MPMSimulation::updatePlasticity(Particle& p, float dt) {
         
         // Reconstruct F with the yielded S
         p.F = R * newS;
+        
+        // Clamp determinant for stability
         p.J = glm::determinant(p.F);
+        p.J = glm::clamp(p.J, 0.5f, 2.0f);
+        
+        // Rescale F to match clamped J if needed
+        if (p.J != glm::determinant(p.F)) {
+            float currentJ = glm::determinant(p.F);
+            float scale = std::pow(p.J / currentJ, 1.0f/3.0f);
+            p.F *= scale;
+        }
     }
 }
 
 glm::mat3 MPMSimulation::computeStress(const Particle& p) {
-    // // Check for numerical instability in deformation gradient
-    // float maxF = 0.0f;
-    // for (int i = 0; i < 3; i++) {
-    //     for (int j = 0; j < 3; j++) {
-    //         maxF = std::max(maxF, std::abs(p.F[i][j]));
-    //     }
-    // }
-    
-    // // If F has grown too large, apply stabilization
-    // if (maxF > 1000.0f) {
-    //     // Create a temporary copy with stabilized F
-    //     glm::mat3 stabilizedF;
-    //     float scaleFactor = 1.0f / maxF;
-        
-    //     for (int i = 0; i < 3; i++) {
-    //         for (int j = 0; j < 3; j++) {
-    //             stabilizedF[i][j] = p.F[i][j] * scaleFactor;
-    //         }
-    //     }
-        
-    //     // Use the stabilized F for stress computation
-    //     glm::mat3 R, S;
-    //     polarDecomposition(stabilizedF, R, S);
-        
-    //     // Scale shear modulus based on melt status
-    //     // For fluid-like behavior, reduce shear resistance as melt increases
-    //     float effectiveShear = shearModulus * (1.0f - 0.99f * p.meltStatus);
-        
-    //     // Keep bulk modulus high for volume preservation
-    //     float effectiveBulk = bulkModulus;
-        
-    //     // Compute strain: E = F - R (linear strain for co-rotational model)
-    //     glm::mat3 strain = stabilizedF - R;
-        
-    //     // Compute trace of strain
-    //     float trace = strain[0][0] + strain[1][1] + strain[2][2];
-        
-    //     // Compute deviatoric strain: E' = E - (1/3)*trace(E)*I
-    //     glm::mat3 identity(1.0f);
-    //     glm::mat3 strainDeviatoric = strain - (trace/3.0f) * identity;
-        
-    //     // Compute stabilized stress: σ = 2μ*E' + κ*trace(E)*I
-    //     glm::mat3 elasticStress = 2.0f * effectiveShear * strainDeviatoric + 
-    //                              effectiveBulk * trace * identity;
-        
-    //     // Scale the stress back up to compensate for the F scaling
-    //     return elasticStress;
-    // }
-    
-    // Normal stress computation for stable cases
+    // Get rotation and stretch components
     glm::mat3 R, S;
     polarDecomposition(p.F, R, S);
     
-    // Scale shear modulus based on melt status
-    // When fully melted (meltStatus = 1.0), shear resistance approaches zero
-    float effectiveShear = shearModulus * (0.1f * p.meltStatus);
+    // More conservative stress calculation for stability
     
-    // Keep bulk modulus high to maintain volume preservation
-    float effectiveBulk = bulkModulus;
+    // Scale shear modulus based on melt status, with less extreme reduction
+    float effectiveShear = shearModulus * (1.0f - 0.9f * p.meltStatus);
+    
+    // Keep high bulk modulus but with slight reduction for melted state
+    float effectiveBulk = bulkModulus * (1.0f - 0.1f * p.meltStatus);
     
     // Compute strain: E = F - R (linear strain for co-rotational model)
     glm::mat3 strain = p.F - R;
@@ -662,15 +662,26 @@ glm::mat3 MPMSimulation::computeStress(const Particle& p) {
     // Compute trace of strain
     float trace = strain[0][0] + strain[1][1] + strain[2][2];
     
+    // Safety clamp on trace for stability
+    trace = glm::clamp(trace, -0.5f, 0.5f);
+    
     // Compute deviatoric strain: E' = E - (1/3)*trace(E)*I
     glm::mat3 identity(1.0f);
-    // glm::mat3 strainDeviatoric = strain - (trace/3.0f) * identity;
+    glm::mat3 strainDeviatoric = strain - (trace/3.0f) * identity;
+    
+    // Clamp extreme deviatoric strain components for stability
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            strainDeviatoric[i][j] = glm::clamp(strainDeviatoric[i][j], -0.2f, 0.2f);
+        }
+    }
     
     // Compute stress: σ = 2μ*E' + κ*trace(E)*I
-    glm::mat3 elasticStress = 2.0f * effectiveShear * strain + 
+    glm::mat3 elasticStress = 2.0f * effectiveShear * strainDeviatoric + 
                              effectiveBulk * trace * identity;
     
-    return elasticStress;
+    // Apply global stress damping factor for stability
+    return elasticStress * 0.8f;
 }
 
 void MPMSimulation::runTests() {
@@ -889,10 +900,3 @@ void MPMSimulation::testComputeStress() {
     
     std::cout << "=== End of computeStress testing ===\n";
 }
-
-/*FUNCTIONS TO ADD:
-COMPUTE STRESS
-UPDATE DEFORMATION GRADIENT 
-APPLY PLASTICITY
-COMPUTE INTERNAL FORCES (helper to simplify the update grid function)
-POLAR DECOMPOSITION (needed for the math in the update grid function)*/
