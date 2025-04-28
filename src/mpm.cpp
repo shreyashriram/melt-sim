@@ -51,7 +51,7 @@ void MPMSimulation::initializeParticles() {
     
     Particle p;  //declare the Particle variable
     for (int i = 0; i < 5; i++) {
-        p = Particle(glm::vec3(i*0.2f, 0.5f, 0.0f), glm::vec3(0.0f, i*0.05f, 0.0f));
+        p = Particle(glm::vec3(i*0.2f, 0.5f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f));
 
         particles.push_back(p);
     }
@@ -284,31 +284,26 @@ void MPMSimulation::updateParticles(float dt) {
     float gridBoundary = grid.size * grid.spacing;
     
     for (auto& p : particles) {
-        // Update melt status based on deformation and velocity
-        float deformation = 0.0f;
-        // Calculate deformation as the Frobenius norm of the velocity gradient
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                deformation += p.velocityGradient[i][j] * p.velocityGradient[i][j];
-            }
-        }
-        deformation = std::sqrt(deformation);
+        // Position-based melting
+        // Define a transition height - above this height particles are solid,
+        // below this height they are liquid
+        float transitionHeight = 0.05f; // Lowered from 1.0f to 0.2f
+        float transitionWidth = 0.2f;  // Controls how gradual the transition is
         
-        float velocity = glm::length(p.velocity);
-        
-        // Increase melt status when there's significant deformation or velocity
-        if (deformation > 0.05f || velocity > 0.5f) {
-            p.meltStatus = glm::min(p.meltStatus + dt * meltRate, 1.0f);
-        } else {
-            // Decrease melt status when stable, but more slowly
-            p.meltStatus = glm::max(p.meltStatus - dt * meltRate * 0.1f, 0.0f);
+        // Calculate melt status based on height (y-position)
+        // 1.0 = fully liquid, 0.0 = fully solid
+        if (p.position.y < transitionHeight - transitionWidth) {
+            // Below transition zone - fully liquid
+            p.meltStatus = 1.0f;
+        } 
+        else if (p.position.y > transitionHeight + transitionWidth) {
+            // Above transition zone - fully solid
+            p.meltStatus = 0.0f;
         }
-
-        // Debug print for first particle
-        if (&p == &particles[999]) {
-            std::cout << "Melt Status: " << p.meltStatus 
-                      << " (Deformation: " << deformation 
-                      << ", Velocity: " << velocity << ")" << std::endl;
+        else {
+            // In transition zone - gradual change from liquid to solid
+            float t = (p.position.y - (transitionHeight - transitionWidth)) / (2.0f * transitionWidth);
+            p.meltStatus = 1.0f - t; // Smoothly transition from 1.0 to 0.0
         }
         
         // Update position based on velocity
@@ -531,7 +526,7 @@ glm::mat3 MPMSimulation::computeVelocityGradient(const Particle& p) {
 }
 
 void MPMSimulation::updatePlasticity(Particle& p, float dt) {
-    // Skip if the material is not yielding or if deformation is too small
+    // Skip if deformation is invalid
     if (p.J <= 0.0f) {
         p.F = glm::mat3(1.0f);
         p.J = 1.0f;
@@ -539,16 +534,20 @@ void MPMSimulation::updatePlasticity(Particle& p, float dt) {
     }
     
     // For highly melted material, reset the deviatoric part of F
-    // This eliminates "memory" of shear deformation, which is key for fluid behavior
+    // This is key to fluid-like behavior - fluids don't remember shear deformation
     if (p.meltStatus > 0.8f) {
-        // Preserve only the volumetric component
+        // Preserve only the volumetric component (J)
         float J = p.J;
+        
+        // Reset F to a pure volume-changing matrix (scaled identity)
+        // This cubic root ensures volume is preserved exactly
         float scaleFactor = std::pow(J, 1.0f/3.0f);
         p.F = glm::mat3(1.0f) * scaleFactor;
         return;
     }
     
-    // For partially melted material, use regular plasticity but with lower yield threshold
+    // For partially melted or solid material, use existing plasticity model
+    // but with yield threshold that scales with melt status
     glm::mat3 R, S;
     polarDecomposition(p.F, R, S);
     
@@ -566,21 +565,29 @@ void MPMSimulation::updatePlasticity(Particle& p, float dt) {
     }
     normDevS = sqrt(normDevS);
     
-    // Scale yield threshold based on melt status
-    // As material melts, it yields much more easily
-    float effectiveYieldThreshold = yieldThreshold * (1.0f - 0.95f * p.meltStatus);
+    // Yield threshold decreases with melt status
+    float effectiveYieldThreshold = yieldThreshold * (1.0f - 0.9f * p.meltStatus);
     
     // Check if yielding occurs
     if (normDevS > effectiveYieldThreshold) {
         // Calculate how much to scale back the elastic deformation
         float scale = effectiveYieldThreshold / normDevS;
         
-        // Minimal hardening as material melts
+        // Apply hardening that decreases with melt status
         float hardeningFactor = 0.5f * (1.0f - p.meltStatus);
         scale = scale * hardeningFactor + (1.0f - hardeningFactor);
         
         // Create the modified stretch matrix
         glm::mat3 newS = (traceS / 3.0f) * identity + scale * devS;
+        
+        // Allow more deformation for melted material
+        float minS = 0.2f + 0.3f * p.meltStatus;  // Lower bound decreases with melt
+        float maxS = 1.5f + 1.0f * p.meltStatus;  // Upper bound increases with melt
+        
+        for (int i = 0; i < 3; i++) {
+            if (newS[i][i] > maxS) newS[i][i] = maxS;
+            if (newS[i][i] < minS) newS[i][i] = minS;
+        }
         
         // Reconstruct F with the yielded S
         p.F = R * newS;
@@ -882,6 +889,7 @@ void MPMSimulation::testComputeStress() {
     
     std::cout << "=== End of computeStress testing ===\n";
 }
+
 /*FUNCTIONS TO ADD:
 COMPUTE STRESS
 UPDATE DEFORMATION GRADIENT 
