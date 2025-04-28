@@ -19,12 +19,12 @@ float randomFloat(float min, float max) {
 }
 
 MPMSimulation::MPMSimulation() 
-    : youngsModulus(2.0e4f),  // Higher stiffness for better stability
-      poissonsRatio(0.4f),    // Less extreme for better stability
-      grid(5, 0.5f), 
+    : youngsModulus(1.0e-4f),  // Higher stiffness for better stability
+      poissonsRatio(0.5f),    // Less extreme for better stability
+      grid(9, 0.3f), 
       yieldThreshold(0.05f),  // Higher threshold for more stability
-      meltRate(1.5f),         // More moderate melt rate
-      globalMeltProgress(0.0f) { // Start fully solid
+      meltRate(0.0f),         // More moderate melt rate
+      globalMeltProgress(1.0f) { // Start fully solid
     
     grid.setupBuffers();
     
@@ -42,11 +42,11 @@ void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
     Particle p;
     for (auto& pt : sampledPoints) {
         // Position the mesh higher for a longer fall
-        float mesh_translate = 2.25f;
+        float mesh_translate = 2.5f;
 
-        p = Particle(glm::vec3(pt.x()+1.25f, pt.y()+mesh_translate, pt.z()+1.25f), 
+        p = Particle(glm::vec3(pt.x()+1.5, pt.y()+mesh_translate, pt.z()+1.5), 
                     glm::vec3(0.0f, -1.0f, 0.0f));  // Initial downward velocity
-        p.meltStatus = 0.0f;  // Start as fully solid
+        p.meltStatus = 1.0f;  // Start as fully solid
         particles.push_back(p);
     }
 }
@@ -192,7 +192,7 @@ void MPMSimulation::updateGrid(float dt) {
         auto& node = grid.nodes[idx];
         if (node.mass > 0.0f) {
             // Add reduced gravity for better stability
-            node.force += glm::vec3(0.0f, -5.8f, 0.0f) * node.mass;
+            node.force += glm::vec3(0.0f, -9.8f, 0.0f) * node.mass;
             
             // Apply velocity diffusion for fluid-like behavior
             glm::vec3 avgNeighborVel(0.0f);
@@ -312,29 +312,31 @@ void MPMSimulation::updateParticles(float dt) {
     
     for (auto& p : particles) {
         // Height-based melting with dependency on global melt progress
-        float fallHeight = 2.5f; // Starting height
-        float floorHeight = 0.2f; // Slightly above the floor
-        float maxMeltDist = fallHeight - floorHeight; // Total distance for complete melting
+        // float fallHeight = 0.75f; // Starting height
+        // float floorHeight = 0.2f; // Slightly above the floor
+        // float maxMeltDist = fallHeight - floorHeight; // Total distance for complete melting
         
-        // Calculate height-based melt factor (0 = top, 1 = floor)
-        float heightFactor = 1.0f - glm::clamp((p.position.y - floorHeight) / maxMeltDist, 0.0f, 1.0f);
+        // // Calculate height-based melt factor (0 = top, 1 = floor)
+        // float heightFactor = 1.0f - glm::clamp((p.position.y - floorHeight) / maxMeltDist, 0.0f, 1.0f);
         
         // Combine with global melt progress, but more gradual
-        float targetMeltStatus = heightFactor * globalMeltProgress * 0.7f;
+        // float targetMeltStatus = heightFactor * globalMeltProgress * 0.7f;
         
         // Very smooth transition towards target melt state for stability
-        float meltRate = 0.8f;
-        p.meltStatus = glm::mix(p.meltStatus, targetMeltStatus, dt * meltRate);
+        // float meltRate = 0.2f;
+        // p.meltStatus = glm::mix(p.meltStatus, targetMeltStatus, dt * meltRate);
         
         // Apply velocity damping for stability
-        p.velocity *= 0.998f;
+        // p.velocity *= 0.998f;
         
         // Velocity cap for stability
-        float maxVel = 8.0f;
+        float maxVel = 15.0f;
         if (glm::length(p.velocity) > maxVel) {
             p.velocity = glm::normalize(p.velocity) * maxVel;
         }
         
+
+
         // Update position based on velocity with sub-stepping for stability
         int substeps = 3;
         float subDt = dt / float(substeps);
