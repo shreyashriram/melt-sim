@@ -121,12 +121,12 @@ int main()
 
     // ! Mesh Subsampling
     Mesh myMesh("../src/assets/models/cube.obj");
-    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.05f,60,100.0f, 1);
+    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.03f,60,100.0f, 1);
     // std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
     std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
     // std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(1000);
-    // //append both vectors
+    //append both vectors
     // sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
     // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
@@ -195,14 +195,14 @@ int main()
     // particleSplatter.setDropletIntensity(2.0f);
 
     // Time step for simulation
-    float deltaTime = 0.02f;
+    float deltaTime = 0.06f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
 
     // View: camera level with cube/cow
-    glm::vec3 cameraPos = glm::vec3(0.5f, 2.0f, 5.0f);  // higher Y
-    glm::vec3 target = glm::vec3(0.75f, 0.75f, 0.75f);     // still looking at the cow
+    glm::vec3 cameraPos = glm::vec3(0.5f, 2.0f, 7.0f);  // higher Y
+    glm::vec3 target = glm::vec3(0.75f, 1.5f, 0.75f);     // still looking at the cow
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
     glm::mat4 view = glm::lookAt(cameraPos, target, up);
@@ -237,9 +237,9 @@ int main()
         particleRenderer.update(mpmSim.particles);
 
         // // ! Util Drawing (Legacy static implementation)
-        // drawAxes(shaderProgram, 10.0f);
-        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f);
-        // mpmSim.grid.draw();
+        drawAxes(shaderProgram, 10.0f);
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f);
+        mpmSim.grid.draw();
 
         // // Draw grid-node debug
         // gridRenderer.update(mpmSim.grid.nodes);
