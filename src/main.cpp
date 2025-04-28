@@ -119,16 +119,21 @@ int main()
     
     Plane myPlane(glm::vec3(0, 0, 0), 0, 10.0f);
 
+
     // ! Mesh Subsampling
     Mesh myMesh("../src/assets/models/cube.obj");
     std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.03f,60,100.0f, 1);
-    // std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
     std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
-    // std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(1000);
-    //append both vectors
-    // sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
+    std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(1000);
+    // append both vectors
+    sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
     // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
+
+        //move the mesh lower and to the left
+    for (auto& pt : sampledPoints) {
+        pt.x() -= 0.75f;
+    }
 
     MPMSimulation mpmSim;
     mpmSim.addMeshParticles(sampledPoints);
@@ -137,9 +142,9 @@ int main()
      GridRenderer gridRenderer(mpmSim.grid.size, mpmSim.grid.spacing);
      gridRenderer.init();
 
-    // ! Particle Setup
-    ParticleRenderer particleRenderer;
-    particleRenderer.init(mpmSim.particles);
+    // // ! Particle Setup
+    // ParticleRenderer particleRenderer;
+    // particleRenderer.init(mpmSim.particles);
 
     // ! Particle Splatter Setup
     // Initialize the particle splatter with desired settings
@@ -163,39 +168,9 @@ int main()
      *   - Higher values (0.9-1.0): Very soft blending between particles
      */
     ParticleSplatter particleSplatter;
-    particleSplatter.init(0.15f, 1.00f); // Particle radius and smoothing
-
-    // Set metaball parameters
-    /*
-     * metaballThreshold: Threshold for when particles start to blend together
-     * - Range: 0.5 - 2.0
-     * - Default: 1.0
-     * - Effects:
-     *   - Lower values (0.5-0.8): More unified/blobby fluid appearance
-     *   - Medium values (0.9-1.3): Balanced cohesion
-     *   - Higher values (1.4-2.0): More distinct particles, less unified
-     */
-
-    /*
-     * metaballStrength: Intensity of the metaball effect between particles
-     * - Range: 0.1 - 1.0
-     * - Default: 0.5
-     * - Effects:
-     *   - Lower values (0.1-0.3): Subtle blending, particles mostly distinct
-     *   - Medium values (0.4-0.6): Natural fluid cohesion
-     *   - Higher values (0.7-1.0): Strong cohesion, more unified fluid surface
-     */
-
-    // particleSplatter.setMetaballThreshold(0.5f); // Threshold for metaball effect
-    // particleSplatter.setMetaballStrength(1.0f);  // Strength of the metaball effect
-
-    // // Set water droplet parameters
-    // particleSplatter.enableWaterDroplets(false); // Enable water droplet textures
-    // particleSplatter.setDropletScale(20.0f);    // Adjust scale of droplet pattern
-    // particleSplatter.setDropletIntensity(2.0f);
-
+    particleSplatter.init(0.06f, 1.00f); // Particle radius and smoothing
     // Time step for simulation
-    float deltaTime = 0.06f;
+    float deltaTime = 0.2f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
@@ -234,12 +209,12 @@ int main()
 
         // Update simulation
         mpmSim.step(deltaTime);
-        particleRenderer.update(mpmSim.particles);
+        // particleRenderer.update(mpmSim.particles);
 
         // // ! Util Drawing (Legacy static implementation)
-        drawAxes(shaderProgram, 10.0f);
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f);
-        mpmSim.grid.draw();
+        // drawAxes(shaderProgram, 10.0f);
+        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f);
+        // mpmSim.grid.draw();
 
         // // Draw grid-node debug
         // gridRenderer.update(mpmSim.grid.nodes);
@@ -249,7 +224,7 @@ int main()
         glUseProgram(shaderProgram);
 
         // ! Draw Plane
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.9f, 0.6f, 0.6f);
         myPlane.draw();
 
         // // Draw Particles with main shader
