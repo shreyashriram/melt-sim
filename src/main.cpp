@@ -111,6 +111,7 @@ int main()
     }
 
     unsigned int shaderProgram = createShaderProgram("../src/assets/shaders/vertex_shader.glsl", "../src/assets/shaders/fragment_shader.glsl");
+    // unsigned int splatterShader = createShaderProgram("../src/assets/shaders/splatter_vertex_shader.glsl", "../src/assets/shaders/splatter_fragment_shader.glsl");
 
     unsigned int gridShaderProgram = createShaderProgramEnhanced(
         "../src/assets/shaders/grid_vertex_shader.glsl",
@@ -121,6 +122,8 @@ int main()
     // ! Mesh Subsampling
     Mesh myMesh("../src/assets/models/cube.obj");
     std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.05f,60,100.0f, 1);
+    // std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
+    std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
     // std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(1000);
     // //append both vectors
@@ -192,15 +195,15 @@ int main()
     // particleSplatter.setDropletIntensity(2.0f);
 
     // Time step for simulation
-    float deltaTime = 0.008f;
+    float deltaTime = 0.02f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
 
-// View: camera level with cube/cow
-glm::vec3 cameraPos = glm::vec3(0.5f, 2.0f, 5.0f);  // higher Y
-glm::vec3 target = glm::vec3(0.75f, 0.75f, 0.75f);     // still looking at the cow
-glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+    // View: camera level with cube/cow
+    glm::vec3 cameraPos = glm::vec3(0.5f, 2.0f, 5.0f);  // higher Y
+    glm::vec3 target = glm::vec3(0.75f, 0.75f, 0.75f);     // still looking at the cow
+    glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
     glm::mat4 view = glm::lookAt(cameraPos, target, up);
 
@@ -215,11 +218,8 @@ glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
         glDisable(GL_CULL_FACE);
         glEnable(GL_DEPTH_TEST);
         processInput(window);
-
-        // Background color
-        // glClearColor(.9f, 0.9f, 0.8f, 1.0f); //off-white
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f); //White
-
+    
+        glClearColor(.9f, 0.9f, 0.8f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(shaderProgram);

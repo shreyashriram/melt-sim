@@ -3,6 +3,9 @@
 #include <glad/glad.h>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <glad/glad.h>
+#include <glm/gtc/type_ptr.hpp>
+
 
 Grid::Grid( int size, float spacing ) : size(size), spacing(spacing) {
     // Sets the size of the "flattened" grid to gridSize x gridSize x gridSize
@@ -18,7 +21,6 @@ Grid::Grid( int size, float spacing ) : size(size), spacing(spacing) {
     }
     
 }
-
 void Grid::setupBuffers() {
     if (initialized) return;
 

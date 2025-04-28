@@ -30,5 +30,3 @@ private:
     bool initialized = false;
 
 };
-
-
