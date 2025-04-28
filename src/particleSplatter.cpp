@@ -7,10 +7,11 @@
 ParticleSplatter::ParticleSplatter() 
     : VAO(0), VBO(0), instanceVBO(0), 
       shaderProgram(0), numParticles(0),
-      radius(0.05f), smoothing(0.8f),
-      metaballThreshold(1.0f), metaballStrength(0.5f),
+      radius(0.08f), smoothing(0.9f),
+      metaballThreshold(0.7f), metaballStrength(1.5f), // Increased strength, lowered threshold
       dropletScale(15.0f), dropletIntensity(0.5f),
-      waterDropletsEnabled(true), 
+      waterDropletsEnabled(true),
+      blurRadius(0.05f), blurSigma(3.0f), // Gaussian blur parameters
       waterTexture(0), waterTextureLoaded(false) {}
 
 ParticleSplatter::~ParticleSplatter() {
@@ -210,12 +211,14 @@ void ParticleSplatter::draw(const glm::mat4& model, const glm::mat4& view, const
     glGetIntegerv(GL_BLEND_SRC_RGB, &blendSrcRGB);
     glGetIntegerv(GL_BLEND_DST_RGB, &blendDestRGB);
     
-    // Enable transparency and disable depth writes
+    // Enable transparency and adjust blending for fluid-like appearance
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // For brighter fluid look (alternative): 
+    // glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_FALSE); // Disable depth writes for transparency
     
-    // Sort particles back-to-front for better transparency (simple approach)
+    // Sort particles back-to-front for better transparency
     if (numParticles > 1) {
         // Extract camera position from view matrix
         glm::mat4 invView = glm::inverse(view);
@@ -294,6 +297,17 @@ void ParticleSplatter::draw(const glm::mat4& model, const glm::mat4& view, const
     GLint metaballStrengthLoc = glGetUniformLocation(shaderProgram, "metaballStrength");
     if (metaballStrengthLoc != -1) {
         glUniform1f(metaballStrengthLoc, metaballStrength);
+    }
+    
+    // Set Gaussian blur uniforms
+    GLint blurRadiusLoc = glGetUniformLocation(shaderProgram, "blurRadius");
+    if (blurRadiusLoc != -1) {
+        glUniform1f(blurRadiusLoc, 0.05f); // Set blur radius
+    }
+    
+    GLint blurSigmaLoc = glGetUniformLocation(shaderProgram, "blurSigma");
+    if (blurSigmaLoc != -1) {
+        glUniform1f(blurSigmaLoc, 3.0f); // Set blur sigma
     }
     
     // Set water droplet-specific uniforms

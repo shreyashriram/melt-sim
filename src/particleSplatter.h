@@ -11,7 +11,7 @@ public:
     ~ParticleSplatter();
 
     // Initialize the splatter with a particle radius and smoothing parameter
-    void init(float particleRadius = 0.05f, float smoothingKernel = 0.8f);
+    void init(float particleRadius = 0.08f, float smoothingKernel = 0.9f);
     
     // Update the particles data
     void update(const std::vector<Particle>& particles);
@@ -25,6 +25,10 @@ public:
     void setDropletScale(float scale) { dropletScale = scale; }
     void setDropletIntensity(float intensity) { dropletIntensity = intensity; }
     void enableWaterDroplets(bool enable) { waterDropletsEnabled = enable; }
+    
+    // Gaussian blur parameters
+    void setBlurRadius(float radius) { blurRadius = radius; }
+    void setBlurSigma(float sigma) { blurSigma = sigma; }
 
 private:
     unsigned int VAO, VBO, instanceVBO;
@@ -45,6 +49,10 @@ private:
     float dropletScale;
     float dropletIntensity;
     bool waterDropletsEnabled;
+    
+    // Gaussian blur parameters
+    float blurRadius;
+    float blurSigma;
     
     // Texture for water droplets
     unsigned int waterTexture;

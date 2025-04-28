@@ -120,9 +120,12 @@ int main()
 
     // ! Mesh Subsampling
     Mesh myMesh("../src/assets/models/cube.obj");
-    // std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.05f,60,100.0f, 1);
-    std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
-    std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
+    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.05f,60,100.0f, 1);
+
+    // std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(1000);
+    // //append both vectors
+    // sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
+    // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
     MPMSimulation mpmSim;
     mpmSim.addMeshParticles(sampledPoints);
@@ -157,7 +160,7 @@ int main()
      *   - Higher values (0.9-1.0): Very soft blending between particles
      */
     ParticleSplatter particleSplatter;
-    particleSplatter.init(0.08f, 0.75f); // Particle radius and smoothing
+    particleSplatter.init(0.15f, 1.00f); // Particle radius and smoothing
 
     // Set metaball parameters
     /*
@@ -180,12 +183,12 @@ int main()
      *   - Higher values (0.7-1.0): Strong cohesion, more unified fluid surface
      */
 
-    particleSplatter.setMetaballThreshold(0.7f); // Threshold for metaball effect
+    particleSplatter.setMetaballThreshold(0.5f); // Threshold for metaball effect
     particleSplatter.setMetaballStrength(1.0f);  // Strength of the metaball effect
 
     // Set water droplet parameters
-    particleSplatter.enableWaterDroplets(true); // Enable water droplet textures
-    particleSplatter.setDropletScale(40.0f);    // Adjust scale of droplet pattern
+    particleSplatter.enableWaterDroplets(false); // Enable water droplet textures
+    particleSplatter.setDropletScale(20.0f);    // Adjust scale of droplet pattern
     particleSplatter.setDropletIntensity(2.0f);
 
     // Time step for simulation
@@ -194,10 +197,10 @@ int main()
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
 
-    // View: camera level with cube/cow
-    glm::vec3 cameraPos = glm::vec3(-0.5f, 3.0f, -4.0f); // higher Y
-    glm::vec3 target = glm::vec3(1.25f, 1.25f, 1.25f);   // still looking at the cube/cow
-    glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+// View: camera level with cube/cow
+glm::vec3 cameraPos = glm::vec3(0.5f, 2.0f, 5.0f);  // higher Y
+glm::vec3 target = glm::vec3(0.75f, 0.75f, 0.75f);     // still looking at the cow
+glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
     glm::mat4 view = glm::lookAt(cameraPos, target, up);
 
@@ -238,9 +241,9 @@ int main()
         // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f);
         // mpmSim.grid.draw();
 
-        // Draw grid-node debug
-        gridRenderer.update(mpmSim.grid.nodes);
-        gridRenderer.draw(model, view, projection, gridShaderProgram);
+        // // Draw grid-node debug
+        // gridRenderer.update(mpmSim.grid.nodes);
+        // gridRenderer.draw(model, view, projection, gridShaderProgram);
         
         // Draw particles with main shader program
         glUseProgram(shaderProgram);
