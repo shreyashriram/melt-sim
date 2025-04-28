@@ -12,9 +12,6 @@
 #include "input.h"
 
 #include <iostream>
-#include <fstream>
-#include <sstream>
-#include <string>
 
 #include "leaven/surfaceSampler.h"  
 #include "leaven/typedef.h"
@@ -27,7 +24,7 @@ using Vector3 = Eigen::Matrix<scalar, 3, 1>;
 #include "particleRenderer.h"
 #include "grid.h"
 #include "mpm.h"
-#include "gridRenderer.h"
+//#include "particleSplatter.h"
 
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
@@ -85,65 +82,6 @@ void drawAxes(GLuint shaderProgram, float axisLength = 10.0f) {
     glBindVertexArray(0);
 }
 
-void drawGridLines(GLuint shaderProgram, int gridSize = 5, float spacing = 0.25f) {
-    static GLuint vao = 0, vbo = 0;
-    static bool initialized = false;
-
-    if (!initialized) {
-        std::vector<glm::vec3> lines;
-
-        float start = 0.0f;                  // Min Corner (0,0,0)
-        float end = gridSize * spacing;       // Max Corner (1.25,1.25,1.25)
-
-        for (int i = 0; i < gridSize + 1; ++i) {
-            float offset = i * spacing;
-
-            // Y-Z planes (lines along X)
-            for (int j = 0; j < gridSize + 1; ++j) {
-                float y = j * spacing;
-                lines.emplace_back(start, y, offset); // growing +Z
-                lines.emplace_back(end,   y, offset);
-            }
-
-            // X-Z planes (lines along Y)
-            for (int j = 0; j < gridSize + 1; ++j) {
-                float x = j * spacing;
-                lines.emplace_back(x, start, offset); // growing +Z
-                lines.emplace_back(x, end,   offset);
-            }
-
-            // X-Y planes (lines along Z)
-            for (int j = 0; j < gridSize + 1; ++j) {
-                float x = j * spacing;
-                lines.emplace_back(x, offset, start); // growing +Y
-                lines.emplace_back(x, offset, end);
-            }
-        }
-
-        glGenVertexArrays(1, &vao);
-        glGenBuffers(1, &vbo);
-
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, lines.size() * sizeof(glm::vec3), lines.data(), GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
-        glBindVertexArray(0);
-
-        initialized = true;
-    }
-
-    glUseProgram(shaderProgram);
-
-    glm::mat4 model = glm::mat4(1.0f);
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
-    glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.6f, 0.6f, 0.6f); // gray lines
-
-    glBindVertexArray(vao);
-    glDrawArrays(GL_LINES, 0, (gridSize + 1) * (gridSize + 1) * 3 * 2); // 3 planes, 2 vertices per line
-    glBindVertexArray(0);
-}
-
 int main() {
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -166,47 +104,19 @@ int main() {
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
-    
-    // Linking shaders with enhanced error checking
-    std::cout << "Compiling and linking grid shader program..." << std::endl;
-    unsigned int gridShaderProgram = createShaderProgramEnhanced(
-        "../src/assets/shaders/grid_vertex_shader.glsl", 
-        "../src/assets/shaders/grid_fragment_shader.glsl"
-    );
-    // if (gridShaderProgram == 0) {
-    //     std::cout << "Failed to compile/link grid shader program!" << std::endl;
-    //     glfwTerminate();
-    //     return -1;
-    // }
-    
-    std::cout << "Compiling and linking main shader program..." << std::endl;
-    unsigned int shaderProgram = createShaderProgramEnhanced(
-        "../src/assets/shaders/vertex_shader.glsl", 
-        "../src/assets/shaders/fragment_shader.glsl"
-    );
-    // if (shaderProgram == 0) {
-    //     std::cout << "Failed to compile/link main shader program!" << std::endl;
-    //     glfwTerminate();
-    //     return -1;
-    // }
-    
-    // // Validate shader programs
-    // std::cout << "Validating grid shader program..." << std::endl;
-    // if (!validateShaderProgram(gridShaderProgram)) {
-    //     std::cout << "Grid shader program validation failed!" << std::endl;
-    // }
-    
-    // std::cout << "Validating main shader program..." << std::endl;
-    // if (!validateShaderProgram(shaderProgram)) {
-    //     std::cout << "Main shader program validation failed!" << std::endl;
-    // }
+
+    unsigned int shaderProgram = createShaderProgram("../src/assets/shaders/vertex_shader.glsl", "../src/assets/shaders/fragment_shader.glsl");
+    // unsigned int splatterShader = createShaderProgram("../src/assets/shaders/splatter_vertex_shader.glsl", "../src/assets/shaders/splatter_fragment_shader.glsl");
+
+
     Plane myPlane(glm::vec3(0, 0, 0), 0, 10.0f);
     
     // ! Mesh Subsampling 
     Mesh myMesh("../src/assets/models/cube.obj");
-    // std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.05f,60,100.0f, 1);
-    std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
+    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.05f,60,100.0f, 1);
+    // std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
     std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
+
     
     MPMSimulation mpmSim;
     mpmSim.addMeshParticles(sampledPoints);
@@ -215,18 +125,67 @@ int main() {
     ParticleRenderer particleRenderer;
     particleRenderer.init(mpmSim.particles);
 
-    // ! Grid Setup
-    GridRenderer gridRenderer(mpmSim.grid.size, mpmSim.grid.spacing);
-    gridRenderer.init();
+    // ! Particle Splatter Setup
+    // Initialize the particle splatter with desired settings
+    /*
+     * particleRadius: Controls the size of each particle splat
+     * - Range: 0.01 - 0.15
+     * - Default: 0.0
+     * - Effects:
+     *   - Smaller values (0.01-0.04): More detailed but potentially grainy fluid
+     *   - Medium values (0.05-0.08): Good balance of detail and smoothness
+     *   - Larger values (0.09-0.15): Smoother but less detailed fluid appearance
+     */
+
+    /*
+     * smoothingKernel: Controls the edge softness of particles
+     * - Range: 0.5 - 1.0
+     * - Default: 0.8
+     * - Effects:
+     *   - Lower values (0.5-0.6): Sharper particle edges, more distinct particles
+     *   - Medium values (0.7-0.8): Natural soft edges
+     *   - Higher values (0.9-1.0): Very soft blending between particles
+     */
+    //ParticleSplatter particleSplatter;
+    // particleSplatter.init(0.08f, 0.75f); // Particle radius and smoothing
+
+    // Set metaball parameters
+    /*
+        * metaballThreshold: Threshold for when particles start to blend together
+        * - Range: 0.5 - 2.0
+        * - Default: 1.0
+        * - Effects:
+        *   - Lower values (0.5-0.8): More unified/blobby fluid appearance
+        *   - Medium values (0.9-1.3): Balanced cohesion
+        *   - Higher values (1.4-2.0): More distinct particles, less unified
+    */
+
+    /*
+        * metaballStrength: Intensity of the metaball effect between particles
+        * - Range: 0.1 - 1.0
+        * - Default: 0.5
+        * - Effects:
+        *   - Lower values (0.1-0.3): Subtle blending, particles mostly distinct
+        *   - Medium values (0.4-0.6): Natural fluid cohesion
+        *   - Higher values (0.7-1.0): Strong cohesion, more unified fluid surface
+        */
+
+    //particleSplatter.setMetaballThreshold(0.7f); // Threshold for metaball effect
+    //particleSplatter.setMetaballStrength(1.0f); // Strength of the metaball eff
+    // Set water droplet parameters
+   // particleSplatter.enableWaterDroplets(true); // Enable water droplet textures
+    //particleSplatter.setDropletScale(40.0f);    // Adjust scale of droplet pattern
+    //particleSplatter.setDropletIntensity(2.0f);
+
     
-    float deltaTime = 0.01f;
+    float deltaTime = 0.08f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
 
     // View: camera level with cube/cow
-    glm::vec3 cameraPos = glm::vec3(-0.5f, 2.0f, -2.5f);  // higher Y
-    glm::vec3 target = glm::vec3(0.5f, 0.5f, 0.5f);     // still looking at the cow
+    glm::vec3 cameraPos = glm::vec3(0.5f, 2.0f, 5.0f);  // higher Y
+    glm::vec3 target = glm::vec3(0.75f, 0.75f, 0.75f);     // still looking at the cow
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
     glm::mat4 view = glm::lookAt(cameraPos, target, up);    
@@ -237,96 +196,52 @@ int main() {
     glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
     glm::vec3 objectColor(0.0f, 0.4f, 0.7f);
     
-    // Print all the uniform locations for debugging
-    std::cout << "Checking uniform locations in main shader program..." << std::endl;
-    glUseProgram(shaderProgram);
-    GLint modelLoc = getAndCheckUniform(shaderProgram, "model");
-    GLint viewPosLoc = getAndCheckUniform(shaderProgram, "viewPos");
-    GLint viewLoc = getAndCheckUniform(shaderProgram, "view");
-    GLint projectionLoc = getAndCheckUniform(shaderProgram, "projection");
-    GLint lightPosLoc = getAndCheckUniform(shaderProgram, "lightPos");
-    GLint lightColorLoc = getAndCheckUniform(shaderProgram, "lightColor");
-    GLint objectColorLoc = getAndCheckUniform(shaderProgram, "objectColor");
-    
-    std::cout << "Checking uniform locations in grid shader program..." << std::endl;
-    glUseProgram(gridShaderProgram);
-    GLint gridModelLoc = getAndCheckUniform(gridShaderProgram, "model");
-    GLint gridViewLoc = getAndCheckUniform(gridShaderProgram, "view");
-    GLint gridProjectionLoc = getAndCheckUniform(gridShaderProgram, "projection");
-    
+
     while (!glfwWindowShouldClose(window)) {
         glDisable(GL_CULL_FACE);
         glEnable(GL_DEPTH_TEST);
         processInput(window);
     
-        glClearColor(0.6f, 0.8f, 0.9f, 1.0f);
+        glClearColor(.9f, 0.9f, 0.8f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
-        // Use and validate main shader program
         glUseProgram(shaderProgram);
-        
-        // Upload camera and lighting uniforms with error checking
-        if (modelLoc != -1)
-            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
-        if (viewPosLoc != -1)
-            glUniform3fv(viewPosLoc, 1, glm::value_ptr(cameraPos));
-        if (viewLoc != -1)
-            glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
-        if (projectionLoc != -1)
-            glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
-        if (lightPosLoc != -1)
-            glUniform3fv(lightPosLoc, 1, glm::value_ptr(lightPos));
-        if (lightColorLoc != -1)
-            glUniform3fv(lightColorLoc, 1, glm::value_ptr(lightColor));
     
-        // Single-step pipeline
+        // Upload camera and lighting uniforms
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
+        glUniform3fv(glGetUniformLocation(shaderProgram, "viewPos"), 1, glm::value_ptr(cameraPos));
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glUniform3fv(glGetUniformLocation(shaderProgram, "lightPos"), 1, glm::value_ptr(lightPos));
+        glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
+    
+        // Update simulation
         mpmSim.step(deltaTime);
-
-        // Use and validate grid shader program
-        glUseProgram(gridShaderProgram);
+        particleRenderer.update(mpmSim.particles);
         
-        // Upload matrices for grid shader
-        if (gridModelLoc != -1)
-            glUniformMatrix4fv(gridModelLoc, 1, GL_FALSE, glm::value_ptr(model));
-        if (gridViewLoc != -1)
-            glUniformMatrix4fv(gridViewLoc, 1, GL_FALSE, glm::value_ptr(view));
-        if (gridProjectionLoc != -1)
-            glUniformMatrix4fv(gridProjectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
+        // ! Util Drawing 
+        drawAxes(shaderProgram, 10.0f);
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f); 
+        mpmSim.grid.draw();
 
-        // Draw grid-node debug
-        gridRenderer.update(mpmSim.grid.nodes); 
-        gridRenderer.draw(model, view, projection, gridShaderProgram);  
+        // ! Draw Plane
+        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
+        // myPlane.draw();
 
-        // Draw particles with main shader program
-        glUseProgram(shaderProgram);
-        particleRenderer.update(mpmSim.particles);        
+        // particleSplatter.update(mpmSim.particles);
+        // particleSplatter.draw(model, view, projection);
 
-        // Draw Plane with main shader
-        if (objectColorLoc != -1)
-            glUniform3f(objectColorLoc, 0.8f, 0.8f, 0.8f);
-        myPlane.draw();
 
-        // Draw Particles with main shader
-        if (objectColorLoc != -1)
-            glUniform3f(objectColorLoc, 1.0f, 0.0f, 0.0f); // red
+        // ! Draw Particles
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.5f, 0.5f); // red
         particleRenderer.draw();
 
-        // Draw Mesh with main shader (commented out in original code)
-        // glm::mat4 meshModel = glm::translate(model, glm::vec3(0.0f, 1.0f, 0.0f));
-        // // meshModel = glm::rotate(meshModel, glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f));        
-        // if (modelLoc != -1)
-        //     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(meshModel));
-        // if (objectColorLoc != -1)
-        //     glUniform3f(objectColorLoc, 0.2f, 0.5f, 1.0f);
+        // ! Draw Mesh
+        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.2f, 0.5f, 1.0f);
         // myMesh.draw();
     
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
     
-    // Clean up
-    glDeleteProgram(shaderProgram);
-    glDeleteProgram(gridShaderProgram);
-    glfwTerminate();
-    return 0;
 }
