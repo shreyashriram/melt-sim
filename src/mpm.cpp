@@ -9,13 +9,12 @@
 #include <Eigen/SVD>
 
 
-
 bool alreadyPrinted = false; //for debugging 
 
 MPMSimulation::MPMSimulation() 
     : youngsModulus(1.0e5f),  // Much lower stiffness for liquid-like behavior
       poissonsRatio(0.49f),    // Very close to 0.5 for incompressible fluid
-      grid(10, 0.5f), 
+      grid(5, 0.5f), 
       yieldThreshold(0.01f),   // Very low yield threshold for fluid-like flow
       meltRate(2.0f),          // Increased melt rate for more noticeable changes
       globalMeltProgress(0.0f) {
@@ -37,9 +36,9 @@ void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
     Particle p;
     for (auto& pt : sampledPoints) {
         // Give initial downward velocity and slight horizontal motion
-        float mesh_translate = .75f;
+        float mesh_translate = 1.25f;
 
-        p = Particle(glm::vec3(pt.x()+mesh_translate, pt.y()+mesh_translate, pt.z()+mesh_translate), 
+        p = Particle(glm::vec3(pt.x()+0.75, pt.y()+mesh_translate, pt.z()+0.75), 
                     glm::vec3(0.0f, -2.0f, 0.0f));  // Moderate initial velocity
         p.meltStatus = 0.0f;  // Start as solid
         particles.push_back(p);
@@ -168,7 +167,7 @@ void MPMSimulation::updateGrid(float dt) {
                     // Force = -volume * stress * weightGrad
                     glm::vec3 force = -p.volume * (stress * weightGrad);
                     
-                    // Scale down forces for stability
+                    // ! Scale down forces for stability
                     force *= 0.5f;
                     
                     int linearIdx = nodeIdx.x + nodeIdx.y * grid.size + nodeIdx.z * grid.size * grid.size;
@@ -182,11 +181,11 @@ void MPMSimulation::updateGrid(float dt) {
     for (size_t idx = 0; idx < grid.nodes.size(); idx++) {
         auto& node = grid.nodes[idx];
         if (node.mass > 0.0f) {
-            // Add gravity
+            // // Add gravity
             node.force += glm::vec3(0.0f, -9.8f, 0.0f) * node.mass;
             
-            // Apply velocity diffusion for fluid-like behavior
-            // This simulates viscosity in fluid regions
+            // // Apply velocity diffusion for fluid-like behavior
+            // // This simulates viscosity in fluid regions
             
             glm::vec3 avgNeighborVel(0.0f);
             float totalWeight = 0.0f;
@@ -226,13 +225,13 @@ void MPMSimulation::updateGrid(float dt) {
                 avgNeighborVel /= totalWeight;
                 // Blend velocity with neighbors based on fluid fraction
                 // This creates viscosity-like behavior
-                float diffusionStrength = 0.2f;
+                float diffusionStrength = 0.5f;
                 node.velocity = glm::mix(node.velocity, avgNeighborVel, diffusionStrength);
             }
     
     
             // Apply minimal damping and update velocity
-            node.velocity *= 0.999f;  // Minimal damping
+            // node.velocity *= 0.999f;  // Minimal damping
             node.velocity += (node.force / node.mass) * dt;
         }
     }
@@ -280,7 +279,6 @@ void MPMSimulation::transferGridToParticles(float dt) {
         p.J = glm::determinant(p.F);
     }
 }
-
 
 void MPMSimulation::updateParticles(float dt) {
     float gridBoundary = grid.size * grid.spacing;
@@ -591,54 +589,54 @@ void MPMSimulation::updatePlasticity(Particle& p, float dt) {
 }
 
 glm::mat3 MPMSimulation::computeStress(const Particle& p) {
-    // Check for numerical instability in deformation gradient
-    float maxF = 0.0f;
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-            maxF = std::max(maxF, std::abs(p.F[i][j]));
-        }
-    }
+    // // Check for numerical instability in deformation gradient
+    // float maxF = 0.0f;
+    // for (int i = 0; i < 3; i++) {
+    //     for (int j = 0; j < 3; j++) {
+    //         maxF = std::max(maxF, std::abs(p.F[i][j]));
+    //     }
+    // }
     
-    // If F has grown too large, apply stabilization
-    if (maxF > 1000.0f) {
-        // Create a temporary copy with stabilized F
-        glm::mat3 stabilizedF;
-        float scaleFactor = 1.0f / maxF;
+    // // If F has grown too large, apply stabilization
+    // if (maxF > 1000.0f) {
+    //     // Create a temporary copy with stabilized F
+    //     glm::mat3 stabilizedF;
+    //     float scaleFactor = 1.0f / maxF;
         
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                stabilizedF[i][j] = p.F[i][j] * scaleFactor;
-            }
-        }
+    //     for (int i = 0; i < 3; i++) {
+    //         for (int j = 0; j < 3; j++) {
+    //             stabilizedF[i][j] = p.F[i][j] * scaleFactor;
+    //         }
+    //     }
         
-        // Use the stabilized F for stress computation
-        glm::mat3 R, S;
-        polarDecomposition(stabilizedF, R, S);
+    //     // Use the stabilized F for stress computation
+    //     glm::mat3 R, S;
+    //     polarDecomposition(stabilizedF, R, S);
         
-        // Scale shear modulus based on melt status
-        // For fluid-like behavior, reduce shear resistance as melt increases
-        float effectiveShear = shearModulus * (1.0f - 0.99f * p.meltStatus);
+    //     // Scale shear modulus based on melt status
+    //     // For fluid-like behavior, reduce shear resistance as melt increases
+    //     float effectiveShear = shearModulus * (1.0f - 0.99f * p.meltStatus);
         
-        // Keep bulk modulus high for volume preservation
-        float effectiveBulk = bulkModulus;
+    //     // Keep bulk modulus high for volume preservation
+    //     float effectiveBulk = bulkModulus;
         
-        // Compute strain: E = F - R (linear strain for co-rotational model)
-        glm::mat3 strain = stabilizedF - R;
+    //     // Compute strain: E = F - R (linear strain for co-rotational model)
+    //     glm::mat3 strain = stabilizedF - R;
         
-        // Compute trace of strain
-        float trace = strain[0][0] + strain[1][1] + strain[2][2];
+    //     // Compute trace of strain
+    //     float trace = strain[0][0] + strain[1][1] + strain[2][2];
         
-        // Compute deviatoric strain: E' = E - (1/3)*trace(E)*I
-        glm::mat3 identity(1.0f);
-        glm::mat3 strainDeviatoric = strain - (trace/3.0f) * identity;
+    //     // Compute deviatoric strain: E' = E - (1/3)*trace(E)*I
+    //     glm::mat3 identity(1.0f);
+    //     glm::mat3 strainDeviatoric = strain - (trace/3.0f) * identity;
         
-        // Compute stabilized stress: σ = 2μ*E' + κ*trace(E)*I
-        glm::mat3 elasticStress = 2.0f * effectiveShear * strainDeviatoric + 
-                                 effectiveBulk * trace * identity;
+    //     // Compute stabilized stress: σ = 2μ*E' + κ*trace(E)*I
+    //     glm::mat3 elasticStress = 2.0f * effectiveShear * strainDeviatoric + 
+    //                              effectiveBulk * trace * identity;
         
-        // Scale the stress back up to compensate for the F scaling
-        return elasticStress;
-    }
+    //     // Scale the stress back up to compensate for the F scaling
+    //     return elasticStress;
+    // }
     
     // Normal stress computation for stable cases
     glm::mat3 R, S;
@@ -646,7 +644,7 @@ glm::mat3 MPMSimulation::computeStress(const Particle& p) {
     
     // Scale shear modulus based on melt status
     // When fully melted (meltStatus = 1.0), shear resistance approaches zero
-    float effectiveShear = shearModulus * (1.0f - 0.99f * p.meltStatus);
+    float effectiveShear = shearModulus * (0.1f * p.meltStatus);
     
     // Keep bulk modulus high to maintain volume preservation
     float effectiveBulk = bulkModulus;
@@ -659,10 +657,10 @@ glm::mat3 MPMSimulation::computeStress(const Particle& p) {
     
     // Compute deviatoric strain: E' = E - (1/3)*trace(E)*I
     glm::mat3 identity(1.0f);
-    glm::mat3 strainDeviatoric = strain - (trace/3.0f) * identity;
+    // glm::mat3 strainDeviatoric = strain - (trace/3.0f) * identity;
     
     // Compute stress: σ = 2μ*E' + κ*trace(E)*I
-    glm::mat3 elasticStress = 2.0f * effectiveShear * strainDeviatoric + 
+    glm::mat3 elasticStress = 2.0f * effectiveShear * strain + 
                              effectiveBulk * trace * identity;
     
     return elasticStress;

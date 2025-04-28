@@ -130,7 +130,7 @@ int main() {
     /*
      * particleRadius: Controls the size of each particle splat
      * - Range: 0.01 - 0.15
-     * - Default: 0.05
+     * - Default: 0.0
      * - Effects:
      *   - Smaller values (0.01-0.04): More detailed but potentially grainy fluid
      *   - Medium values (0.05-0.08): Good balance of detail and smoothness
@@ -184,8 +184,8 @@ int main() {
     glm::mat4 model = glm::mat4(1.0f);
 
     // View: camera level with cube/cow
-    glm::vec3 cameraPos = glm::vec3(-0.5f, 2.0f, -4.0f);  // higher Y
-    glm::vec3 target = glm::vec3(1.25f, 1.25f, 1.25f);     // still looking at the cow
+    glm::vec3 cameraPos = glm::vec3(0.5f, 2.0f, 5.0f);  // higher Y
+    glm::vec3 target = glm::vec3(0.75f, 0.75f, 0.75f);     // still looking at the cow
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
     glm::mat4 view = glm::lookAt(cameraPos, target, up);    
@@ -220,9 +220,9 @@ int main() {
         particleRenderer.update(mpmSim.particles);
         
         // ! Util Drawing 
-        // drawAxes(shaderProgram, 10.0f);
-        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f); 
-        // mpmSim.grid.draw();
+        drawAxes(shaderProgram, 10.0f);
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f); 
+        mpmSim.grid.draw();
 
         // ! Draw Plane
         // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.8f, 0.8f, 0.8f);
