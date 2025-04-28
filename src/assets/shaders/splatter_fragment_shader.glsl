@@ -4,211 +4,199 @@ out vec4 FragColor;
 in vec3 FragPos;
 in vec3 Normal;
 in vec2 TexCoord;
-in float DistFromCenter;
-in vec4 ParticleParams; // xyz = position, w = size
-in vec3 ParticleVelocity; // Velocity for trail effects
+in vec3 Tangent;
+in vec3 Bitangent;
+in vec3 ParticleVelocity;
+in vec4 ParticleParams;
 
-// Metaball parameters
-uniform int numParticles;         // Total number of particles
-uniform vec4 particlePositions[100]; // Array of particle positions (increase if needed)
-uniform float metaballThreshold = 0.7;  // Threshold for metaball effect
-uniform float metaballStrength = 1.5;   // Strength of metaball effect
-
-// Gaussian blur parameters
-uniform float blurRadius = 0.05;  // Radius of the blur effect
-uniform float blurSigma = 3.0;    // Sigma value for the Gaussian function
-
-// Standard lighting parameters
+// Lighting
 uniform vec3 lightPos;
 uniform vec3 viewPos;
 uniform vec3 lightColor;
-uniform vec3 objectColor;
-uniform float smoothing = 0.9;
+uniform vec3 waterColor;
 
-// Water droplet parameters
-uniform bool enableWaterDroplets = true;
-uniform float dropletScale = 15.0;     // Scale of water droplet pattern
-uniform float dropletIntensity = 0.5;  // Intensity of the water droplet effect
-uniform sampler2D waterTexture;        // Optional texture for water droplets
+// Water parameters
+uniform float reflectionStrength;
+uniform float specularPower;
+uniform float specularStrength;
+uniform float fresnelBias;
+uniform float fresnelScale;
+uniform float fresnelPower;
+uniform float rippleStrength;
+uniform float rippleSpeed;
+uniform float time;
+uniform float surfaceTensionStrength;
+uniform float blendDistance;
 
-// Random functions for noise
-float random(vec2 st) {
-    return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
-}
+// Blending parameters
+uniform int numParticles;
+uniform vec4 particlePositions[100];
 
-float noise(vec2 st) {
-    vec2 i = floor(st);
-    vec2 f = fract(st);
+// Feature toggles
+uniform bool reflectionsEnabled;
+uniform bool refractionsEnabled;
+
+// Textures
+uniform sampler2D normalMap;
+uniform sampler2D environmentMap;
+
+// Calculate how much particles influence each other at a point
+float calculateBlendFactor(vec3 position) {
+    float blendFactor = 0.0;
     
-    // Four corners in 2D of a tile
-    float a = random(i);
-    float b = random(i + vec2(1.0, 0.0));
-    float c = random(i + vec2(0.0, 1.0));
-    float d = random(i + vec2(1.0, 1.0));
-
-    // Smooth interpolation
-    vec2 u = f * f * (3.0 - 2.0 * f);
-
-    return mix(a, b, u.x) + 
-        (c - a) * u.y * (1.0 - u.x) + 
-        (d - b) * u.x * u.y;
-}
-
-// Function to create water droplet pattern
-float waterDropletPattern(vec2 uv, float scale, float time) {
-    float n = noise(uv * scale);
+    // Only calculate blend if we're not too far from any particle center
+    vec2 texCoordFromCenter = TexCoord - vec2(0.5);
+    float distFromCenter = length(texCoordFromCenter);
     
-    // Create water droplet effect by adding multiple noise layers
-    float droplet = smoothstep(0.4, 0.5, n);
+    // Only do the calculation near the edges of particles
+    if (distFromCenter > 0.3) {
+        for (int i = 0; i < numParticles; i++) {
+            vec3 otherPos = particlePositions[i].xyz;
+            float otherSize = particlePositions[i].w;
+            
+            // Skip if it's the same particle
+            vec3 diff = otherPos - ParticleParams.xyz;
+            float distSquared = dot(diff, diff);
+            if (distSquared < 0.0001) continue;
+            
+            // Calculate how much this other particle influences this point
+            // Use an exponential falloff
+            float blendThreshold = blendDistance * blendDistance;
+            if (distSquared < blendThreshold) {
+                // Calculate influence based on distance
+                float influence = exp(-distSquared / (blendThreshold * 0.5));
+                
+                // Scale influence based on how close we are to the edge
+                influence *= smoothstep(0.0, 0.4, distFromCenter);
+                
+                // Add to total blend factor
+                blendFactor += influence * surfaceTensionStrength;
+            }
+        }
+    }
     
-    // Add some variation for more natural look
-    droplet += 0.1 * noise(uv * scale * 2.0 + vec2(time * 0.1));
-    
-    return droplet;
-}
-
-// Gaussian function for blur
-float gaussian(float x, float sigma) {
-    return exp(-(x*x) / (2.0 * sigma * sigma)) / (sqrt(2.0 * 3.14159) * sigma);
-}
-
-// Function to apply a simple Gaussian blur
-float applyGaussianBlur(float value, float dist, float radius, float sigma) {
-    // Only apply blur near the edges
-    if (dist < 0.3) return value;
-    
-    // Calculate blur factor based on distance from center
-    float blurFactor = smoothstep(0.3, 0.5, dist);
-    
-    // Apply gaussian function to create soft edges
-    float gaussianValue = gaussian(dist, sigma * 0.1);
-    
-    // Blend between original value and blurred value
-    return mix(value, value * gaussianValue / gaussian(0.0, sigma * 0.1), blurFactor);
+    // Clamp to reasonable range
+    return min(blendFactor, 1.0);
 }
 
 void main() {
-    // Calculate velocity effect
-    float velocityMag = length(ParticleVelocity);
-    float velocityEffect = clamp(velocityMag * 0.5, 0.0, 1.0);
+    // Calculate base particle shape (circular falloff)
+    vec2 texCoordFromCenter = TexCoord - vec2(0.5);
+    float distFromCenter = length(texCoordFromCenter);
+    float circularMask = smoothstep(0.5, 0.4, distFromCenter);
     
-    // Calculate distance from center of splat, adjusted for velocity
-    float dist = length(TexCoord - vec2(0.5));
-    
-    // Adjust edge for velocity - more elongated droplets have sharper edges
-    float edge = mix(0.45, 0.3, velocityEffect);
-    float mask = smoothstep(0.5, edge, dist);
-    
-    // Apply Gaussian blur to the mask for smoother transitions
-    mask = applyGaussianBlur(mask, dist, blurRadius, blurSigma);
-    
-    // Trail effect for faster particles
-    float trailEffect = smoothstep(0.0, 1.0, velocityMag * 0.3);
-    
-    // Apply trail to mask - make particles with higher velocity more transparent at the edges
-    mask = mix(mask, mask * (1.0 - dist), trailEffect * 0.5);
-    
-    // Extend edges with blur (decrease threshold further)
-    if (mask < 0.005) // Even lower threshold with blur
+    // Discard fragments outside the circular shape
+    if (circularMask < 0.01)
         discard;
     
-    // Standard lighting calculation
-    vec3 norm = normalize(Normal);
-    vec3 lightDir = normalize(lightPos - FragPos);
-    vec3 viewDir = normalize(viewPos - FragPos);
+    // Animate texture coordinates for flowing water effect
+    vec2 flowSpeed = vec2(0.03, 0.02) * rippleSpeed;
+    vec2 flowDir = normalize(vec2(ParticleVelocity.xy) + vec2(0.01, 0.01));
+    if (length(ParticleVelocity) > 0.1) {
+        flowSpeed = flowSpeed + flowDir * length(ParticleVelocity) * 0.05;
+    }
+    vec2 animatedTexCoords = TexCoord * 3.0 + time * flowSpeed;
     
-    float ambientStrength = 0.4;
+    // Get normal from normal map
+    vec3 normalMapValue = texture(normalMap, animatedTexCoords).rgb;
+    normalMapValue = normalMapValue * 2.0 - 1.0; // Convert from [0,1] to [-1,1]
+    
+    // Reduce normal map intensity at the edges for smoother transitions
+    float edgeFactor = smoothstep(0.5, 0.35, distFromCenter);
+    normalMapValue.xy *= mix(0.05, rippleStrength, edgeFactor);
+    
+    // Calculate blend factor between particles
+    float blendFactor = calculateBlendFactor(FragPos);
+    
+    // Construct TBN matrix for normal mapping
+    vec3 N = normalize(Normal);
+    vec3 T = normalize(Tangent);
+    vec3 B = normalize(Bitangent);
+    mat3 TBN = mat3(T, B, N);
+    
+    // Apply normal map with TBN matrix
+    vec3 mappedNormal = TBN * normalize(normalMapValue);
+    
+    // Smoothly blend between mapped normal and original normal near edges
+    float normalBlendFactor = smoothstep(0.45, 0.3, distFromCenter);
+    vec3 finalNormal = normalize(mix(N, mappedNormal, normalBlendFactor));
+    
+    // Apply particle blending to normal
+    if (blendFactor > 0.0) {
+        // Flatten normal at particle intersections for smoother transitions
+        finalNormal = normalize(mix(finalNormal, N, blendFactor * 0.7));
+    }
+    
+    // Calculate basic lighting vectors
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+    
+    // Calculate Fresnel effect (stronger reflections at glancing angles)
+    float fresnel = fresnelBias + fresnelScale * pow(1.0 - max(0.0, dot(viewDir, finalNormal)), fresnelPower);
+    
+    // Sample environment map for reflections
+    // We use a simple spherical mapping for the environment 
+    vec3 reflectDir = reflect(-viewDir, finalNormal);
+    
+    // Convert 3D reflection direction to 2D texture coordinates
+    // This is a simple spherical mapping - a real implementation would use cubemaps
+    float m = 2.0 * sqrt(reflectDir.x*reflectDir.x + reflectDir.y*reflectDir.y + (reflectDir.z+1.0)*(reflectDir.z+1.0));
+    vec2 envMapCoord = vec2(reflectDir.x/m + 0.5, reflectDir.y/m + 0.5);
+    
+    // Sample environment texture
+    vec3 reflectionColor = texture(environmentMap, envMapCoord).rgb;
+    
+    // Ambient component
+    float ambientStrength = 0.2;
     vec3 ambient = ambientStrength * lightColor;
     
-    float diff = max(dot(norm, lightDir), 0.0) * 0.4;
+    // Diffuse component
+    float diff = max(dot(finalNormal, lightDir), 0.0);
     vec3 diffuse = diff * lightColor;
     
-    float specularStrength = 0.1;
-    vec3 halfwayDir = normalize(lightDir + viewDir);
-    float spec = pow(max(dot(norm, halfwayDir), 0.0), 16.0);
-    vec3 specular = specularStrength * spec * lightColor;
+    // Specular component (with blending)
+    float spec = pow(max(dot(finalNormal, halfwayDir), 0.0), specularPower);
     
-    // Generate water droplet texture
-    float droplet = 0.0;
-    if (enableWaterDroplets) {
-        // Use particle position as a unique seed for variation
-        vec2 seed = vec2(ParticleParams.x * 10.0, ParticleParams.y * 10.0);
-        
-        // Create water droplet pattern
-        droplet = waterDropletPattern(TexCoord * 3.0 + seed, dropletScale, 0.0);
-        droplet *= dropletIntensity;
+    // Enhance specular at particle-particle boundaries for cohesive look
+    float enhancedSpec = spec;
+    if (blendFactor > 0.0) {
+        enhancedSpec = mix(spec, spec * 1.5, blendFactor);
     }
     
-    // Enhanced droplet effects based on velocity
-    if (velocityMag > 0.2) {
-        // Add streaks in the direction of movement for fast particles
-        vec2 normalizedVelocity2D = normalize(vec2(ParticleVelocity.x, ParticleVelocity.y));
-        float streakEffect = pow(abs(dot(normalize(TexCoord - vec2(0.5)), normalizedVelocity2D)), 3.0);
-        droplet += streakEffect * velocityEffect * 0.3;
+    vec3 specular = specularStrength * enhancedSpec * lightColor;
+    
+    // Apply water color with lighting
+    vec3 baseColor = waterColor;
+    vec3 litColor = (ambient + diffuse) * baseColor + specular;
+    
+    // Mix water color and reflection based on Fresnel term and setting
+    vec3 finalColor = litColor;
+    if (reflectionsEnabled) {
+        finalColor = mix(litColor, reflectionColor, fresnel * reflectionStrength);
     }
     
-    // Apply water droplet effect to normal and color
-    vec3 adjustedNormal = normalize(norm + vec3(droplet * 0.1, droplet * 0.1, 0.0));
+    // Add extra highlights at the edges for depth
+    float rimLight = pow(1.0 - max(0.0, dot(viewDir, finalNormal)), 4.0);
+    finalColor += rimLight * lightColor * 0.2;
     
-    // Metaball calculation - influences the alpha
-    float metaballField = 0.0;
-    // Self contribution
-    metaballField += 1.0 / (dist * dist + 0.01) * metaballStrength;
-    
-    // Contribution from nearby particles
-    for (int i = 0; i < numParticles; i++) {
-        vec3 otherPos = particlePositions[i].xyz;
-        float otherSize = particlePositions[i].w;
-        
-        // Skip if it's the same particle or too far away
-        vec3 diff = otherPos - ParticleParams.xyz;
-        float distSquared = dot(diff, diff);
-        if (distSquared < 0.00001 || distSquared > 0.1) continue;
-        
-        // Add contribution from nearby particle
-        float influence = otherSize * otherSize / (distSquared + 0.001) * metaballStrength;
-        metaballField += influence;
+    // Add velocity-based highlight (brighter in direction of motion)
+    if (length(ParticleVelocity) > 0.1) {
+        vec3 velDir = normalize(vec3(ParticleVelocity));
+        float velHighlight = pow(max(0.0, dot(viewDir, velDir)), 8.0) * length(ParticleVelocity);
+        finalColor += velHighlight * vec3(0.7, 0.8, 1.0) * 0.3;
     }
-
-    // Calculate metaball factor for blending
-    float metaballFactor = smoothstep(0.0, metaballThreshold, metaballField);
     
-    // Apply the base color with water droplet effect
-    float dropletHighlight = droplet * 0.2;
-    vec3 fluidColor = objectColor * (1.0 + (0.05 * (1.0 - dist) + dropletHighlight));
+    // Adjust alpha for smoother blending between particles
+    float alpha = circularMask;
     
-    // Enhanced fluid appearance with varying depth and color
-    float depthFactor = 0.95 - droplet * 0.1;
+    // Make edges more transparent
+    float edgeTransparency = smoothstep(0.5, 0.4, distFromCenter);
+    alpha *= edgeTransparency;
     
-    // Add velocity-based color tinting (blue to white as velocity increases)
-    vec3 velocityColor = mix(fluidColor, vec3(1.0, 1.0, 1.0), velocityEffect * 0.3);
+    // Strengthen alpha in areas with particle overlap
+    alpha = mix(alpha, min(alpha + 0.2, 1.0), blendFactor);
     
-    // Combine lighting
-    vec3 result = (ambient + diffuse + specular) * velocityColor * depthFactor;
-    
-    // Enhanced alpha for metaball effect
-    float alphaFactor = smoothstep(0.0, 0.25, mask);
-    float baseAlpha = mix(0.9, 0.7, dist * 0.3) * alphaFactor;
-    
-    // Gaussian blur on the alpha value to create smoother transitions
-    baseAlpha = applyGaussianBlur(baseAlpha, dist, blurRadius * 2.0, blurSigma);
-    
-    // Metaball-influenced alpha blending
-    float blendStrength = 0.85; // Controls how strongly particles blend together
-    float finalAlpha = mix(baseAlpha, min(baseAlpha + metaballFactor, 1.0), blendStrength);
-    
-    // Add a subtle edge to the fluid surface but with Gaussian falloff
-    float edgeFactor = 1.0 - gaussian(dist, 0.25) / gaussian(0.0, 0.25);
-    finalAlpha = mix(finalAlpha, finalAlpha * (1.0 - edgeFactor * pow(dist, 2.0)), 0.3);
-    
-    // Add subtle refraction at the edges
-    float refractionFactor = 0.05 * (1.0 - mask) * (1.0 + droplet);
-    result += refractionFactor * vec3(0.8, 0.9, 1.0);
-    
-    // Add subtle water caustics effect
-    float causticEffect = noise(TexCoord * 20.0) * noise(TexCoord * 15.0 + vec2(0.2, 0.3));
-    result += causticEffect * 0.1 * baseAlpha * vec3(0.8, 0.95, 1.0);
-    
-    // Final color with improved fluid blending
-    FragColor = vec4(result, finalAlpha);
+    // Output final color with alpha
+    FragColor = vec4(finalColor, alpha);
 }

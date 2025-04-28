@@ -183,13 +183,13 @@ int main()
      *   - Higher values (0.7-1.0): Strong cohesion, more unified fluid surface
      */
 
-    particleSplatter.setMetaballThreshold(0.5f); // Threshold for metaball effect
-    particleSplatter.setMetaballStrength(1.0f);  // Strength of the metaball effect
+    // particleSplatter.setMetaballThreshold(0.5f); // Threshold for metaball effect
+    // particleSplatter.setMetaballStrength(1.0f);  // Strength of the metaball effect
 
-    // Set water droplet parameters
-    particleSplatter.enableWaterDroplets(false); // Enable water droplet textures
-    particleSplatter.setDropletScale(20.0f);    // Adjust scale of droplet pattern
-    particleSplatter.setDropletIntensity(2.0f);
+    // // Set water droplet parameters
+    // particleSplatter.enableWaterDroplets(false); // Enable water droplet textures
+    // particleSplatter.setDropletScale(20.0f);    // Adjust scale of droplet pattern
+    // particleSplatter.setDropletIntensity(2.0f);
 
     // Time step for simulation
     float deltaTime = 0.008f;

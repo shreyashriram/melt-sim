@@ -1,20 +1,24 @@
 #version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
-layout (location = 2) in vec4 aParticleData; // xyz = position, w = size
-layout (location = 3) in vec4 aParticleVelocity; // xyz = velocity, w = unused
+layout (location = 2) in vec2 aTexCoords;
+layout (location = 3) in vec4 aParticleData; // xyz = position, w = size
+layout (location = 4) in vec4 aParticleVelocity; // xyz = velocity, w = unused
 
 out vec3 FragPos;
 out vec3 Normal;
 out vec2 TexCoord;
-out float DistFromCenter;
-out vec4 ParticleParams; // Pass particle data to fragment shader
-out vec3 ParticleVelocity; // Pass velocity for fragment shader effects
+out vec3 Tangent;
+out vec3 Bitangent;
+out vec3 ParticleVelocity;
+out vec4 ParticleParams;
 
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
-uniform float dropletDeformFactor = 0.7; // Controls how much to stretch particles based on velocity
+uniform float time;
+uniform float rippleSpeed;
+uniform float rippleStrength;
 
 void main() {
     // Extract particle data
@@ -22,77 +26,46 @@ void main() {
     float particleSize = aParticleData.w;
     vec3 velocity = aParticleVelocity.xyz;
     
-    // Calculate velocity magnitude and direction
-    float velocityMag = length(velocity);
-    vec3 velocityDir = velocityMag > 0.01 ? normalize(velocity) : vec3(0.0, -1.0, 0.0);
-    
-    // Calculate billboarding vectors - aligned with camera but stretched in velocity direction
+    // Calculate billboarding vectors - aligned with camera
     vec3 camRight = normalize(vec3(view[0][0], view[1][0], view[2][0]));
     vec3 camUp = normalize(vec3(view[0][1], view[1][1], view[2][1]));
-    
-    // Transform these basis vectors to align one with velocity direction for stretching
-    // We want to stretch in the velocity direction and compress perpendicular to it
-    
-    // Calculate the billboard normal - direction facing the camera
     vec3 billboardNormal = normalize(vec3(view[0][2], view[1][2], view[2][2]));
     
-    // Find the best alignment between velocity and the camera basis
-    // Project velocity onto camera plane
-    vec3 projVelocity = velocity - dot(velocity, billboardNormal) * billboardNormal;
-    vec3 projVelocityDir = length(projVelocity) > 0.01 ? normalize(projVelocity) : normalize(camUp);
-
-    // Calculate perpendicular vector to both the projected velocity and billboard normal
-    vec3 perpVelocity = normalize(cross(projVelocityDir, billboardNormal));
+    // Calculate velocity magnitude for deformation
+    float velocityMag = length(velocity);
     
-    // Deformation factors - stretch in velocity direction, compress in perpendicular
-    // Increased stretch factor for more continuous appearance
-    float stretchFactor = 1.0 + velocityMag * dropletDeformFactor * 1.2;
-    float compressFactor = 1.0 / (1.0 + velocityMag * 0.3);
-    
-    // Scale in velocity direction
-    vec3 adjustedRight, adjustedUp;
-    
-    if (velocityMag > 0.01) {
-        // Use the projected velocity as one axis and the perpendicular as the other
-        adjustedRight = perpVelocity * compressFactor;
-        adjustedUp = projVelocityDir * stretchFactor;
-    } else {
-        // When nearly stationary, use regular billboarding with a slight size increase
-        // Increased stationary particle size helps with gaps
-        adjustedRight = camRight * 1.1;
-        adjustedUp = camUp * 1.1;
+    // Add ripple effect based on time
+    float waveOffset = 0.0;
+    if (velocityMag < 0.1) { // Only add ripples to relatively stationary particles
+        // Simple sine wave displacement based on distance from center
+        float distFromCenter = length(aPos.xy);
+        waveOffset = sin(distFromCenter * 10.0 + time * rippleSpeed) * rippleStrength * 
+                     max(0.0, 1.0 - distFromCenter * 2.0); // Fade out toward edges
     }
     
-    // Generate billboarded vertex position with velocity-based deformation
+    // Generate billboarded vertex position with ripple effect
     vec3 vertPos = particlePos + 
-                  adjustedRight * aPos.x * particleSize + 
-                  adjustedUp * aPos.y * particleSize;
+                  camRight * aPos.x * particleSize + 
+                  camUp * aPos.y * particleSize + 
+                  billboardNormal * waveOffset; // Apply wave offset along normal
     
-    // Create a normal that gives good lighting with the deformed shape
-    vec3 faceNormal;
-    if (velocityMag > 0.01) {
-        // Blend between velocity direction and camera-facing normal for dynamic billboarding
-        faceNormal = normalize(mix(billboardNormal, -velocityDir, 0.3));
-    } else {
-        // Standard normal when nearly stationary
-        faceNormal = billboardNormal;
-    }
+    // Tangent and bitangent for normal mapping
+    // In a billboard, tangent is along the right vector and bitangent along up
+    Tangent = camRight;
+    Bitangent = camUp;
     
-    // We need to convert these to world space for our existing shader format
+    // Transform to world space
     FragPos = vec3(model * vec4(vertPos, 1.0));
-    Normal = mat3(transpose(inverse(model))) * faceNormal;
     
-    // Pass texture coordinates for the splat - adjusted to account for stretching
-    TexCoord = aPos.xy + 0.5; // Convert from [-0.5, 0.5] to [0, 1]
+    // Normal should point toward camera for the billboard
+    Normal = mat3(transpose(inverse(model))) * billboardNormal;
     
-    // Calculate distance from center for the fragment shader
-    // Account for the elongated shape by scaling the distance calculation
-    vec2 scaledPos = vec2(aPos.x / compressFactor, aPos.y / stretchFactor);
-    DistFromCenter = length(scaledPos);
+    // Pass texture coordinates for the water surface
+    TexCoord = aTexCoords;
     
-    // Pass particle parameters to fragment shader for unique water effects
-    ParticleParams = aParticleData;
+    // Pass additional data to fragment shader
     ParticleVelocity = velocity;
+    ParticleParams = vec4(particlePos, particleSize);
     
     gl_Position = projection * view * model * vec4(vertPos, 1.0);
 }

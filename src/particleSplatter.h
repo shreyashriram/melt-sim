@@ -11,7 +11,7 @@ public:
     ~ParticleSplatter();
 
     // Initialize the splatter with a particle radius and smoothing parameter
-    void init(float particleRadius = 0.08f, float smoothingKernel = 0.9f);
+    void init(float particleRadius = 0.1f, float smoothingKernel = 0.8f);
     
     // Update the particles data
     void update(const std::vector<Particle>& particles);
@@ -19,16 +19,20 @@ public:
     // Draw the particles as fluid-like splats
     void draw(const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection);
 
-    // Set parameters for the fluid rendering
-    void setMetaballThreshold(float threshold) { metaballThreshold = threshold; }
-    void setMetaballStrength(float strength) { metaballStrength = strength; }
-    void setDropletScale(float scale) { dropletScale = scale; }
-    void setDropletIntensity(float intensity) { dropletIntensity = intensity; }
-    void enableWaterDroplets(bool enable) { waterDropletsEnabled = enable; }
-    
-    // Gaussian blur parameters
-    void setBlurRadius(float radius) { blurRadius = radius; }
-    void setBlurSigma(float sigma) { blurSigma = sigma; }
+    // Set parameters for the water rendering
+    void setReflectionStrength(float strength) { reflectionStrength = strength; }
+    void setSpecularPower(float power) { specularPower = power; }
+    void setSpecularStrength(float strength) { specularStrength = strength; }
+    void setFresnelBias(float bias) { fresnelBias = bias; }
+    void setFresnelScale(float scale) { fresnelScale = scale; }
+    void setFresnelPower(float power) { fresnelPower = power; }
+    void setRippleStrength(float strength) { rippleStrength = strength; }
+    void setRippleSpeed(float speed) { rippleSpeed = speed; }
+    void setWaterColor(const glm::vec3& color) { waterColor = color; }
+    void setSurfaceTensionStrength(float strength) { surfaceTensionStrength = strength; }
+    void setBlendDistance(float distance) { blendDistance = distance; }
+    void enableReflections(bool enable) { reflectionsEnabled = enable; }
+    void enableRefractions(bool enable) { refractionsEnabled = enable; }
 
 private:
     unsigned int VAO, VBO, instanceVBO;
@@ -37,27 +41,37 @@ private:
     std::vector<glm::vec4> particleData; // Position and velocity data interleaved
     size_t numParticles;
     
-    // Splatter parameters
+    // Surface parameters
     float radius;
     float smoothing;
     
-    // Metaball parameters
-    float metaballThreshold;
-    float metaballStrength;
+    // Liquid blending parameters
+    float surfaceTensionStrength;
+    float blendDistance;
     
-    // Water droplet parameters
-    float dropletScale;
-    float dropletIntensity;
-    bool waterDropletsEnabled;
+    // Water appearance parameters
+    glm::vec3 waterColor;
+    float reflectionStrength;
+    float specularPower;
+    float specularStrength;
+    float fresnelBias;
+    float fresnelScale;
+    float fresnelPower;
+    float rippleStrength;
+    float rippleSpeed;
+    bool reflectionsEnabled;
+    bool refractionsEnabled;
     
-    // Gaussian blur parameters
-    float blurRadius;
-    float blurSigma;
+    // Textures for water effects
+    unsigned int normalMapTexture;
+    unsigned int environmentMapTexture;
+    bool texturesLoaded;
     
-    // Texture for water droplets
-    unsigned int waterTexture;
-    bool waterTextureLoaded;
+    // Helper methods to load or generate textures
+    unsigned int createNormalMapTexture();
+    unsigned int createEnvironmentMapTexture();
     
-    // Helper method to load or generate water texture
-    unsigned int createWaterDropletTexture();
+    // Helper method to update time
+    float currentTime;
+    void updateTime();
 };
