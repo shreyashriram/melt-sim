@@ -24,6 +24,9 @@ public:
     void updateParticles(float dt);
     void computeForces();
     void updateGrid(float dt);
+    // In MPMSimulation.h add:
+    void resolveParticleCollisions(float radius, float stiffness);
+
 
     float youngsModulus;
     float poissonsRatio;

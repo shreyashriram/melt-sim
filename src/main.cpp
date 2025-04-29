@@ -125,10 +125,10 @@ int main()
     // std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
     std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
-    // std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(1000);
-    //append both vectors
-    // sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
-    // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
+    std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(500);
+    // append both vectors
+    sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
+    std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
     MPMSimulation mpmSim;
     mpmSim.addMeshParticles(sampledPoints);
@@ -137,9 +137,9 @@ int main()
      GridRenderer gridRenderer(mpmSim.grid.size, mpmSim.grid.spacing);
      gridRenderer.init();
 
-    // ! Particle Setup
-    ParticleRenderer particleRenderer;
-    particleRenderer.init(mpmSim.particles);
+    // // ! Particle Setup
+    // ParticleRenderer particleRenderer;
+    // particleRenderer.init(mpmSim.particles);
 
     // ! Particle Splatter Setup
     // Initialize the particle splatter with desired settings
@@ -163,53 +163,24 @@ int main()
      *   - Higher values (0.9-1.0): Very soft blending between particles
      */
     ParticleSplatter particleSplatter;
-    particleSplatter.init(0.05f, 1.00f); // Particle radius and smoothing
-
-    // Set metaball parameters
-    /*
-     * metaballThreshold: Threshold for when particles start to blend together
-     * - Range: 0.5 - 2.0
-     * - Default: 1.0
-     * - Effects:
-     *   - Lower values (0.5-0.8): More unified/blobby fluid appearance
-     *   - Medium values (0.9-1.3): Balanced cohesion
-     *   - Higher values (1.4-2.0): More distinct particles, less unified
-     */
-
-    /*
-     * metaballStrength: Intensity of the metaball effect between particles
-     * - Range: 0.1 - 1.0
-     * - Default: 0.5
-     * - Effects:
-     *   - Lower values (0.1-0.3): Subtle blending, particles mostly distinct
-     *   - Medium values (0.4-0.6): Natural fluid cohesion
-     *   - Higher values (0.7-1.0): Strong cohesion, more unified fluid surface
-     */
-
-    // particleSplatter.setMetaballThreshold(0.5f); // Threshold for metaball effect
-    // particleSplatter.setMetaballStrength(1.0f);  // Strength of the metaball effect
-
-    // // Set water droplet parameters
-    // particleSplatter.enableWaterDroplets(false); // Enable water droplet textures
-    // particleSplatter.setDropletScale(20.0f);    // Adjust scale of droplet pattern
-    // particleSplatter.setDropletIntensity(2.0f);
+    particleSplatter.init(0.08f, 1.00f); // Particle radius and smoothing
 
     // Time step for simulation
-    float deltaTime = 0.06f;
+    float deltaTime = 0.09f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
 
     // View: camera level with cube/cow
-    glm::vec3 cameraPos = glm::vec3(8.0f, 1.75f, 1.0f);  // higher Y
-    glm::vec3 target = glm::vec3(0.75f, 1.0f, 1.75f);     // still looking at the cow
+    glm::vec3 cameraPos = glm::vec3(7.5f, 2.5f, 1.5f);  // higher Y
+    glm::vec3 target = glm::vec3(1.0f, 1.25f, 1.5f);     // still looking at the cow
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
     glm::mat4 view = glm::lookAt(cameraPos, target, up);
 
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
 
-    glm::vec3 lightPos(1.2f, 1.0f, 2.0f);
+    glm::vec3 lightPos(3.0f, 6.0f, 5.0f);
     glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
     glm::vec3 objectColor(0.0f, 0.4f, 0.7f);
 
@@ -219,7 +190,7 @@ int main()
         glEnable(GL_DEPTH_TEST);
         processInput(window);
     
-        glClearColor(.9f, 0.9f, 0.8f, 1.0f);
+        glClearColor(.9f, 0.9f, 0.9f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(shaderProgram);
@@ -234,10 +205,10 @@ int main()
 
         // Update simulation
         mpmSim.step(deltaTime);
-        particleRenderer.update(mpmSim.particles);
+        // particleRenderer.update(mpmSim.particles);
 
         // // ! Util Drawing (Legacy static implementation)
-        drawAxes(shaderProgram, 10.0f);
+        // drawAxes(shaderProgram, 10.0f);
         glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f);
         mpmSim.grid.draw();
 

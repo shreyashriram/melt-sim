@@ -21,7 +21,7 @@ float randomFloat(float min, float max) {
 MPMSimulation::MPMSimulation() 
     : youngsModulus(1.0e-4f),  // Higher stiffness for better stability
       poissonsRatio(0.5f),    // Less extreme for better stability
-      grid(9, 0.3f), 
+      grid(10, 0.3f), 
       yieldThreshold(0.05f),  // Higher threshold for more stability
       meltRate(0.0f),         // More moderate melt rate
       globalMeltProgress(1.0f) { // Start fully solid
@@ -37,14 +37,79 @@ MPMSimulation::MPMSimulation()
     }
 }
 
+// In MPMSimulation.cpp, after updateParticles(...) but before your end of step():
+void MPMSimulation::resolveParticleCollisions(float radius, float stiffness) {
+    // 1) Build a simple uniform grid index
+    float invCellSize = 1.0f / (radius * 2.0f);
+    struct Cell { std::vector<int> ids; };
+    std::unordered_map<long long, Cell> gridMap;
+    gridMap.reserve(particles.size() * 2);
+
+    auto hash = [&](const glm::ivec3 &c){
+        // pack three 21-bit coords into one 64-bit key
+        return ( (long long)c.x & 0x1FFFFFLL )
+             | (((long long)c.y & 0x1FFFFFLL) << 21)
+             | (((long long)c.z & 0x1FFFFFLL) << 42);
+    };
+
+    // assign each particle to a cell
+    for (int i = 0; i < (int)particles.size(); ++i) {
+        glm::ivec3 cell = glm::floor(particles[i].position * invCellSize);
+        gridMap[hash(cell)].ids.push_back(i);
+    }
+
+    // 2) For each particle, only test neighbors in nearby cells
+    float r2 = radius*radius;
+    for (int i = 0; i < (int)particles.size(); ++i) {
+        auto &pi = particles[i];
+        glm::ivec3 baseCell = glm::floor(pi.position * invCellSize);
+
+        for (int dx = -1; dx <= 1; ++dx) {
+        for (int dy = -1; dy <= 1; ++dy) {
+        for (int dz = -1; dz <= 1; ++dz) {
+            glm::ivec3 nc = baseCell + glm::ivec3(dx, dy, dz);
+            auto it = gridMap.find(hash(nc));
+            if (it == gridMap.end()) continue;
+
+            for (int j : it->second.ids) {
+                if (j <= i) continue;           // don’t double-count
+                auto &pj = particles[j];
+
+                glm::vec3 d = pj.position - pi.position;
+                float d2 = glm::dot(d, d);
+                if (d2 >= r2 || d2 < 1e-7f) continue;
+
+                float dist = sqrt(d2);
+                glm::vec3 nrm = d / dist;
+
+                // 3) position correction: push them half the overlap each
+                float penetration = radius - dist;
+                glm::vec3 corr = 0.5f * penetration * nrm;
+                pi.position -= corr;
+                pj.position += corr;
+
+                // 4) simple impulse exchange for bounce/stick
+                glm::vec3 relVel = pj.velocity - pi.velocity;
+                float vn = glm::dot(relVel, nrm);
+                if (vn < 0.0f) {
+                    float impulse = -(1.0f + stiffness) * vn / 2.0f;
+                    glm::vec3 J = impulse * nrm;
+                    pi.velocity -= J;
+                    pj.velocity += J;
+                }
+            }
+        }}} 
+    }
+}
+
 
 void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
     Particle p;
     for (auto& pt : sampledPoints) {
         // Position the mesh higher for a longer fall
-        float mesh_translate = 2.5f;
+        float mesh_translate = 2.75f;
 
-        p = Particle(glm::vec3(pt.x()+1.5, pt.y()+mesh_translate, pt.z()+1.5), 
+        p = Particle(glm::vec3(pt.x()+1.5, pt.y()+mesh_translate, pt.z()+1.0), 
                     glm::vec3(0.0f, -1.0f, 0.0f));  // Initial downward velocity
         p.meltStatus = 1.0f;  // Start as fully solid
         particles.push_back(p);
@@ -82,6 +147,8 @@ void MPMSimulation::step(float dt) {
     updateGrid(stableDt);
     transferGridToParticles(stableDt);
     updateParticles(stableDt);
+
+    resolveParticleCollisions(0.03f, 0.9f);
 }
 
 void MPMSimulation::transferParticlesToGrid() { 
@@ -232,12 +299,12 @@ void MPMSimulation::updateGrid(float dt) {
             if (totalWeight > 0.0f) {
                 avgNeighborVel /= totalWeight;
                 // Moderate diffusion strength for stability
-                float diffusionStrength = 0.4f;
+                float diffusionStrength = 0.0f;
                 node.velocity = glm::mix(node.velocity, avgNeighborVel, diffusionStrength);
             }
             
             // Apply mild velocity damping for stability
-            node.velocity *= 0.995f;
+            // node.velocity *= 0.995f;
             
             // Update velocity with forces (with damping)
             node.velocity += (node.force / node.mass) * dt * 0.8f;
@@ -336,7 +403,6 @@ void MPMSimulation::updateParticles(float dt) {
         }
         
 
-
         // Update position based on velocity with sub-stepping for stability
         int substeps = 3;
         float subDt = dt / float(substeps);
@@ -347,10 +413,10 @@ void MPMSimulation::updateParticles(float dt) {
             // Floor collision
             if (p.position.y < 0.0f) {
                 
-            p.position.y = 0.0f;
-            float splashJitter = 0.008f; // small randomness
-            p.position.x += randomFloat(-splashJitter, splashJitter);
-            p.position.z += randomFloat(-splashJitter, splashJitter);
+                p.position.y = 0.0f;
+                float splashJitter = 0.008f; // small randomness
+                p.position.x += randomFloat(-splashJitter, splashJitter);
+                p.position.z += randomFloat(-splashJitter, splashJitter);
 
                 p.position.y = 0.0f;
                 
@@ -394,39 +460,39 @@ void MPMSimulation::updateParticles(float dt) {
             // Wall boundaries with conservative splash effects
             float wallBoundary = gridBoundary - 0.5f; // Larger margin for stability
             
-            // X-axis boundaries
-            if (p.position.x < 0.1f || p.position.x > wallBoundary) {
-                if (p.position.x < 0.1f) p.position.x = 0.1f;
-                if (p.position.x > wallBoundary) p.position.x = wallBoundary;
+            // // X-axis boundaries
+            // if (p.position.x < 0.1f || p.position.x > wallBoundary) {
+            //     if (p.position.x < 0.1f) p.position.x = 0.1f;
+            //     if (p.position.x > wallBoundary) p.position.x = wallBoundary;
                 
-                float impact = glm::abs(p.velocity.x);
-                float bounce = glm::mix(0.2f, 0.5f, p.meltStatus); // Reduced bounce
+            //     float impact = glm::abs(p.velocity.x);
+            //     float bounce = glm::mix(0.2f, 0.5f, p.meltStatus); // Reduced bounce
                 
-                p.velocity.x = -p.velocity.x * bounce;
+            //     p.velocity.x = -p.velocity.x * bounce;
                 
-                // Reduced vertical splash for stability
-                if (p.meltStatus > 0.5f && impact > 2.0f) {
-                    float splashUp = impact * 0.1f; // Reduced splash
-                    p.velocity.y += splashUp;
-                }
-            }
+            //     // Reduced vertical splash for stability
+            //     if (p.meltStatus > 0.5f && impact > 2.0f) {
+            //         float splashUp = impact * 0.1f; // Reduced splash
+            //         p.velocity.y += splashUp;
+            //     }
+            // }
             
-            // Z-axis boundaries
-            if (p.position.z < 0.1f || p.position.z > wallBoundary) {
-                if (p.position.z < 0.1f) p.position.z = 0.1f;
-                if (p.position.z > wallBoundary) p.position.z = wallBoundary;
+            // // Z-axis boundaries
+            // if (p.position.z < 0.1f || p.position.z > wallBoundary) {
+            //     if (p.position.z < 0.1f) p.position.z = 0.1f;
+            //     if (p.position.z > wallBoundary) p.position.z = wallBoundary;
                 
-                float impact = glm::abs(p.velocity.z);
-                float bounce = glm::mix(0.2f, 0.5f, p.meltStatus); // Reduced bounce
+            //     float impact = glm::abs(p.velocity.z);
+            //     float bounce = glm::mix(0.2f, 0.5f, p.meltStatus); // Reduced bounce
                 
-                p.velocity.z = -p.velocity.z * bounce;
+            //     p.velocity.z = -p.velocity.z * bounce;
                 
-                // Reduced vertical splash for stability
-                if (p.meltStatus > 0.5f && impact > 2.0f) {
-                    float splashUp = impact * 0.1f; // Reduced splash
-                    p.velocity.y += splashUp;
-                }
-            }
+            //     // Reduced vertical splash for stability
+            //     if (p.meltStatus > 0.5f && impact > 2.0f) {
+            //         float splashUp = impact * 0.1f; // Reduced splash
+            //         p.velocity.y += splashUp;
+            //     }
+            // }
         }
         
         // Apply plasticity to limit deformation
