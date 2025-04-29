@@ -120,18 +120,21 @@ int main()
     Plane myPlane(glm::vec3(0, 0, 0), 0, 10.0f);
 
     // ! Mesh Subsampling
-    Mesh myMesh("../src/assets/models/cube.obj");
-    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.03f,60,100.0f, 1);
+    Mesh myMesh("../src/assets/models/spot.obj");
+    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.08f,60,100.0f, 1);
     // std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
-    std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
+    // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
-    std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(500);
+    // std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(500);
     // append both vectors
-    sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
-    std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
+    // sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
+    // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
     MPMSimulation mpmSim;
     mpmSim.addMeshParticles(sampledPoints);
+
+    // mpmSim.spawnCube(MaterialType::Solid, glm::vec3(1.50f, 2.0f, 1.50f), 0.1f, 10);
+    // mpmSim.spawnCube(MaterialType::Solid, glm::vec3(1.50f, 3.0f, 1.50f), 0.1f, 15);
 
      // ! Grid Setup
      GridRenderer gridRenderer(mpmSim.grid.size, mpmSim.grid.spacing);
@@ -166,13 +169,13 @@ int main()
     particleSplatter.init(0.08f, 1.00f); // Particle radius and smoothing
 
     // Time step for simulation
-    float deltaTime = 0.09f;
+    float deltaTime = 0.1f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
 
     // View: camera level with cube/cow
-    glm::vec3 cameraPos = glm::vec3(7.5f, 2.5f, 1.5f);  // higher Y
+    glm::vec3 cameraPos = glm::vec3(7.5f, 2.5f, 1.5f);   // higher Y
     glm::vec3 target = glm::vec3(1.0f, 1.25f, 1.5f);     // still looking at the cow
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 

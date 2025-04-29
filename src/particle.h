@@ -3,6 +3,8 @@
 #include <vector>
 #include <glm/glm.hpp>
 
+enum class MaterialType { Solid, Liquid, Melting };
+
 struct Particle {
     glm::vec3 position;
     glm::vec3 velocity;
@@ -18,6 +20,8 @@ struct Particle {
     float J; //determinant of the deformation gradient
     glm::mat3 C; //APIC velocity field matrix
     glm::mat3 velocityGradient; //velocity gradient tensor
+
+    MaterialType materialType = MaterialType::Solid;
 
     
     Particle(float density = 1000.0f) : position(0.0f), velocity(0.0f), force(0.0f), mass(1.0f), J(1.0f), volume(1.0f), meltStatus(0.0f),F(1.0f), F_p(1.0f), F_e(1.0f), C(0.0f), velocityGradient(0.0f) {

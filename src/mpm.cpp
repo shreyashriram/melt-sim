@@ -19,23 +19,36 @@ float randomFloat(float min, float max) {
 }
 
 MPMSimulation::MPMSimulation() 
-    : youngsModulus(1.0e-4f),  // Higher stiffness for better stability
-      poissonsRatio(0.5f),    // Less extreme for better stability
+    : youngsModulus(1.4e3f),        // Higher stiffness for better stability
+      poissonsRatio(0.495f),          // Less extreme for better stability
       grid(10, 0.3f), 
-      yieldThreshold(0.05f),  // Higher threshold for more stability
-      meltRate(0.0f),         // More moderate melt rate
-      globalMeltProgress(1.0f) { // Start fully solid
+      yieldThreshold(0.15f),        // Higher threshold for more stability
+      meltRate(0.0f),               // More moderate melt rate
+      globalMeltProgress(1.0f) {    // Start fully solid
     
     grid.setupBuffers();
     
     //calculate Lamé parameters from Young's modulus and Poisson's ratio
     shearModulus = youngsModulus / (2.0f * (1.0f + poissonsRatio));
     bulkModulus = youngsModulus * poissonsRatio / ((1.0f + poissonsRatio) * (1.0f - 2.0f * poissonsRatio));
-    
-    if (poissonsRatio > 0.495f) {
-        bulkModulus = 1000.0f * shearModulus;
+}
+
+void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
+    Particle p;
+    for (auto& pt : sampledPoints) {
+        // Position the mesh higher for a longer fall
+        float mesh_translate = 1.75f;
+
+        p = Particle(glm::vec3(pt.x()+1.5, pt.y()+mesh_translate, pt.z()+1.0), 
+                    glm::vec3(0.0f, -1.0f, 0.0f));  // Initial downward velocity
+        
+        p.materialType = MaterialType::Solid;
+        p.meltStatus = 0.0f;
+        
+        particles.push_back(p);
     }
 }
+
 
 // In MPMSimulation.cpp, after updateParticles(...) but before your end of step():
 void MPMSimulation::resolveParticleCollisions(float radius, float stiffness) {
@@ -102,30 +115,34 @@ void MPMSimulation::resolveParticleCollisions(float radius, float stiffness) {
     }
 }
 
+void MPMSimulation::spawnCube(MaterialType type, glm::vec3 center, float spacing, int countPerAxis) {
+    particles.clear();
 
-void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
-    Particle p;
-    for (auto& pt : sampledPoints) {
-        // Position the mesh higher for a longer fall
-        float mesh_translate = 2.75f;
+    float halfExtent = 0.5f * spacing * (countPerAxis - 1);
 
-        p = Particle(glm::vec3(pt.x()+1.5, pt.y()+mesh_translate, pt.z()+1.0), 
-                    glm::vec3(0.0f, -1.0f, 0.0f));  // Initial downward velocity
-        p.meltStatus = 1.0f;  // Start as fully solid
-        particles.push_back(p);
+    for (int i = 0; i < countPerAxis; ++i) {
+        for (int j = 0; j < countPerAxis; ++j) {
+            for (int k = 0; k < countPerAxis; ++k) {
+                glm::vec3 offset = glm::vec3(
+                    (i * spacing) - halfExtent,
+                    (j * spacing) - halfExtent,
+                    (k * spacing) - halfExtent
+                );
+                Particle p(center + offset, glm::vec3(0.0f, -1.0f, 0.0f));
+                p.materialType = type;
+                if (type == MaterialType::Solid) {
+                    p.meltStatus = 0.0f;
+                } else if (type == MaterialType::Liquid) {
+                    p.meltStatus = 1.0f;
+                } else if (type == MaterialType::Melting) {
+                    p.meltStatus = 0.0f; // will melt over time
+                }
+                particles.push_back(p);
+            }
+        }
     }
 }
 
-void MPMSimulation::initializeParticles() {
-    particles.clear(); 
-    
-    Particle p;
-    for (int i = 0; i < 5; i++) {
-        p = Particle(glm::vec3(i*0.2f, 3.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
-        p.meltStatus = 0.0f; // Start as solid
-        particles.push_back(p);
-    }
-}
 
 void MPMSimulation::step(float dt) {
     // Limit dt for stability
@@ -148,7 +165,7 @@ void MPMSimulation::step(float dt) {
     transferGridToParticles(stableDt);
     updateParticles(stableDt);
 
-    resolveParticleCollisions(0.03f, 0.9f);
+    // resolveParticleCollisions(0.03f, 0.9f);
 }
 
 void MPMSimulation::transferParticlesToGrid() { 
@@ -378,125 +395,16 @@ void MPMSimulation::updateParticles(float dt) {
     float gridBoundary = grid.size * grid.spacing;
     
     for (auto& p : particles) {
-        // Height-based melting with dependency on global melt progress
-        // float fallHeight = 0.75f; // Starting height
-        // float floorHeight = 0.2f; // Slightly above the floor
-        // float maxMeltDist = fallHeight - floorHeight; // Total distance for complete melting
-        
-        // // Calculate height-based melt factor (0 = top, 1 = floor)
-        // float heightFactor = 1.0f - glm::clamp((p.position.y - floorHeight) / maxMeltDist, 0.0f, 1.0f);
-        
-        // Combine with global melt progress, but more gradual
-        // float targetMeltStatus = heightFactor * globalMeltProgress * 0.7f;
-        
-        // Very smooth transition towards target melt state for stability
-        // float meltRate = 0.2f;
-        // p.meltStatus = glm::mix(p.meltStatus, targetMeltStatus, dt * meltRate);
-        
-        // Apply velocity damping for stability
-        // p.velocity *= 0.998f;
-        
-        // Velocity cap for stability
-        float maxVel = 15.0f;
-        if (glm::length(p.velocity) > maxVel) {
-            p.velocity = glm::normalize(p.velocity) * maxVel;
+        // !!!! REFACTOR
+        if (p.materialType == MaterialType::Solid) {
+            updateSolidParticle(p, dt);
+        } else if (p.materialType == MaterialType::Liquid) {
+            updateLiquidParticle(p, dt);
+        } else if (p.materialType == MaterialType::Melting) {
+            updateMeltingParticle(p, dt);
         }
-        
 
-        // Update position based on velocity with sub-stepping for stability
-        int substeps = 3;
-        float subDt = dt / float(substeps);
-        for (int step = 0; step < substeps; step++) {
-            p.position += p.velocity * subDt;
-            
-            // Apply boundary conditions in each substep
-            // Floor collision
-            if (p.position.y < 0.0f) {
-                
-                p.position.y = 0.0f;
-                float splashJitter = 0.008f; // small randomness
-                p.position.x += randomFloat(-splashJitter, splashJitter);
-                p.position.z += randomFloat(-splashJitter, splashJitter);
-
-                p.position.y = 0.0f;
-                
-                float impactVelocity = std::abs(p.velocity.y);
-                
-                // More conservative bounce factors
-                float minBounce = 0.05f;
-                float maxBounce = 0.5f;
-                float velocityFactor = glm::clamp(impactVelocity / 15.0f, 0.0f, 1.0f);
-                
-                // Melt status affects bounce height
-                float fluidBounce = glm::mix(minBounce, maxBounce, velocityFactor);
-                float solidBounce = 0.2f; // Less bounce for solid objects
-                
-                float bounce = glm::mix(solidBounce, fluidBounce, p.meltStatus);
-                
-                // Apply reduced splash velocity
-                p.velocity.y = impactVelocity * bounce;
-                
-                // Add controlled horizontal splash for fluid particles
-                if (p.meltStatus > 0.5f && impactVelocity > 2.0f) {
-                    // Simple pseudo-random number based on particle position
-                    float randX = glm::sin(p.position.x * 43.0f + p.position.z * 17.0f) * 0.5f + 0.5f;
-                    float randZ = glm::cos(p.position.x * 23.0f + p.position.z * 31.0f) * 0.5f + 0.5f;
-                    
-                    // Reduced splash magnitude
-                    float splashMagnitude = impactVelocity * 0.15f;
-                    p.velocity.x += (randX * 2.0f - 1.0f) * splashMagnitude;
-                    p.velocity.z += (randZ * 2.0f - 1.0f) * splashMagnitude;
-                }
-                
-                // Horizontal damping depends on melt status
-                float solidDamping = 0.9f;
-                float liquidDamping = 0.98f;
-                float damping = glm::mix(solidDamping, liquidDamping, p.meltStatus);
-                
-                p.velocity.x *= damping;
-                p.velocity.z *= damping;
-            }
-            
-            // Wall boundaries with conservative splash effects
-            float wallBoundary = gridBoundary - 0.5f; // Larger margin for stability
-            
-            // // X-axis boundaries
-            // if (p.position.x < 0.1f || p.position.x > wallBoundary) {
-            //     if (p.position.x < 0.1f) p.position.x = 0.1f;
-            //     if (p.position.x > wallBoundary) p.position.x = wallBoundary;
-                
-            //     float impact = glm::abs(p.velocity.x);
-            //     float bounce = glm::mix(0.2f, 0.5f, p.meltStatus); // Reduced bounce
-                
-            //     p.velocity.x = -p.velocity.x * bounce;
-                
-            //     // Reduced vertical splash for stability
-            //     if (p.meltStatus > 0.5f && impact > 2.0f) {
-            //         float splashUp = impact * 0.1f; // Reduced splash
-            //         p.velocity.y += splashUp;
-            //     }
-            // }
-            
-            // // Z-axis boundaries
-            // if (p.position.z < 0.1f || p.position.z > wallBoundary) {
-            //     if (p.position.z < 0.1f) p.position.z = 0.1f;
-            //     if (p.position.z > wallBoundary) p.position.z = wallBoundary;
-                
-            //     float impact = glm::abs(p.velocity.z);
-            //     float bounce = glm::mix(0.2f, 0.5f, p.meltStatus); // Reduced bounce
-                
-            //     p.velocity.z = -p.velocity.z * bounce;
-                
-            //     // Reduced vertical splash for stability
-            //     if (p.meltStatus > 0.5f && impact > 2.0f) {
-            //         float splashUp = impact * 0.1f; // Reduced splash
-            //         p.velocity.y += splashUp;
-            //     }
-            // }
-        }
-        
-        // Apply plasticity to limit deformation
-        updatePlasticity(p, dt);
+        // !!!!!
     }
 }
 
@@ -768,6 +676,187 @@ glm::mat3 MPMSimulation::computeStress(const Particle& p) {
     
     // Apply global stress damping factor for stability
     return elasticStress * 0.8f;
+}
+
+
+void MPMSimulation::updateSolidParticle(Particle& p, float dt) {
+    // TODO: fill this in next
+
+    float maxVel = 15.0f;
+    if (glm::length(p.velocity) > maxVel) {
+        p.velocity = glm::normalize(p.velocity) * maxVel;
+    }
+    
+    // Update position based on velocity with sub-stepping for stability
+    int substeps = 3;
+    float subDt = dt / float(substeps);
+    for (int step = 0; step < substeps; step++) {
+        p.position += p.velocity * subDt;
+        
+        // Apply boundary conditions in each substep
+        // FLOOR COLLISIONS
+        if (p.position.y < 0.0f) {
+            
+            p.position.y = 0.0f;
+            
+            // ** JITTERING 
+            float splashJitter = 0.008f; // small randomness
+            p.position.x += randomFloat(-splashJitter, splashJitter);
+            p.position.z += randomFloat(-splashJitter, splashJitter);
+
+            
+            // ** BOUNCING
+            float impactVelocity = std::abs(p.velocity.y);
+
+            // 0.2 solid bounce -> 0.5 liquid bounce based on meltStatus
+            float baseBounce = glm::mix(0.2f, 0.5f, p.meltStatus);
+            
+            // bounce varies from 0.05 (small impact) up to baseBounce (full impact)
+            float velocityFactor = glm::clamp(impactVelocity / 15.0f, 0.0f, 1.0f);
+            float bounce = glm::mix(0.05f, baseBounce, velocityFactor);
+            
+            p.velocity.y = impactVelocity * bounce;
+
+        
+            // // Add controlled horizontal splash for fluid particles
+            // if (p.meltStatus > 0.5f && impactVelocity > 2.0f) {
+            //     // Simple pseudo-random number based on particle position
+            //     float randX = glm::sin(p.position.x * 43.0f + p.position.z * 17.0f) * 0.5f + 0.5f;
+            //     float randZ = glm::cos(p.position.x * 23.0f + p.position.z * 31.0f) * 0.5f + 0.5f;
+                
+            //     // Reduced splash magnitude
+            //     float splashMagnitude = impactVelocity * 0.15f;
+            //     p.velocity.x += (randX * 2.0f - 1.0f) * splashMagnitude;
+            //     p.velocity.z += (randZ * 2.0f - 1.0f) * splashMagnitude;
+            // }
+            
+
+            // ** DAMPING
+            // Horizontal damping depends on melt status: [0.9: solid --> 0.98: liquid]
+            float baseDamping = glm::mix(0.9f, 0.98f, p.meltStatus);
+            p.velocity.x *= baseDamping;
+            p.velocity.z *= baseDamping;
+        } 
+    }
+
+    updatePlasticity(p, dt);
+}
+
+void MPMSimulation::updateLiquidParticle(Particle& p, float dt) {
+    // TODO: fill this in next
+
+    float maxVel = 15.0f;
+    if (glm::length(p.velocity) > maxVel) {
+        p.velocity = glm::normalize(p.velocity) * maxVel;
+    }
+    
+    // Update position based on velocity with sub-stepping for stability
+    int substeps = 3;
+    float subDt = dt / float(substeps);
+    for (int step = 0; step < substeps; step++) {
+        p.position += p.velocity * subDt;
+        
+        // Apply boundary conditions in each substep
+        // FLOOR COLLISIONS
+        if (p.position.y < 0.0f) {
+            
+            p.position.y = 0.0f;
+            
+            // ** JITTERING 
+            float splashJitter = 0.015f; // small randomness
+            p.position.x += randomFloat(-splashJitter, splashJitter);
+            p.position.z += randomFloat(-splashJitter, splashJitter);
+
+            
+            // ** BOUNCING
+            float impactVelocity = std::abs(p.velocity.y);
+
+            float baseBounce = 0.05f;
+            float velocityFactor = glm::clamp(impactVelocity / 15.0f, 0.0f, 1.0f);
+            float bounce = glm::mix(0.02f, baseBounce, velocityFactor);
+            
+            p.velocity.y = impactVelocity * bounce;
+
+            // ** SPLASHING
+            if (impactVelocity > 1.0f) {
+                float randX = glm::sin(p.position.x * 43.0f + p.position.z * 17.0f) * 0.5f + 0.5f;
+                float randZ = glm::cos(p.position.x * 23.0f + p.position.z * 31.0f) * 0.5f + 0.5f;
+
+                float splashMagnitude = impactVelocity * 0.25f;
+
+                p.velocity.x += (randX * 2.0f - 1.0f) * splashMagnitude;
+                p.velocity.z += (randZ * 2.0f - 1.0f) * splashMagnitude;
+
+
+                // ** DAMPING
+                // Horizontal damping depends on melt status: [0.9: solid --> 0.98: liquid]
+                float baseDamping = 0.98f;
+                p.velocity.x *= baseDamping;
+                p.velocity.z *= baseDamping;
+            } 
+        }
+    }
+}
+
+void MPMSimulation::updateMeltingParticle(Particle& p, float dt) {
+    
+    float maxVel = 15.0f;
+    if (glm::length(p.velocity) > maxVel) {
+        p.velocity = glm::normalize(p.velocity) * maxVel;
+    }
+
+    int substeps = 3;
+    float subDt = dt / float(substeps);
+    for (int step = 0; step < substeps; step++) {
+        p.position += p.velocity * subDt;
+
+        if (p.position.y < 0.0f) {
+            p.position.y = 0.0f;
+
+            // ** JITTERING 
+            float splashJitter = glm::mix(0.008f, 0.015f, p.meltStatus); // blend between solid jitter and liquid jitter
+            p.position.x += randomFloat(-splashJitter, splashJitter);
+            p.position.z += randomFloat(-splashJitter, splashJitter);
+
+            float impactVelocity = std::abs(p.velocity.y);
+
+            // ** BOUNCING
+            float solidBounce = 0.2f;
+            float fluidBounce = 0.05f;
+            float baseBounce = glm::mix(solidBounce, fluidBounce, p.meltStatus);
+
+            float velocityFactor = glm::clamp(impactVelocity / 15.0f, 0.0f, 1.0f);
+            float bounce = glm::mix(0.05f, baseBounce, velocityFactor);
+
+            p.velocity.y = impactVelocity * bounce;
+
+            // ** SPLASHING
+            if (impactVelocity > 1.0f) {
+                float randX = glm::sin(p.position.x * 43.0f + p.position.z * 17.0f) * 0.5f + 0.5f;
+                float randZ = glm::cos(p.position.x * 23.0f + p.position.z * 31.0f) * 0.5f + 0.5f;
+
+                float splashMagnitude = impactVelocity * glm::mix(0.15f, 0.25f, p.meltStatus); // bigger splashes when more melted
+                p.velocity.x += (randX * 2.0f - 1.0f) * splashMagnitude;
+                p.velocity.z += (randZ * 2.0f - 1.0f) * splashMagnitude;
+            }
+
+            // ** DAMPING
+            float baseDamping = glm::mix(0.9f, 0.98f, p.meltStatus);
+            p.velocity.x *= baseDamping;
+            p.velocity.z *= baseDamping;
+        }
+    }
+
+
+    // && UPDATE PLASTICITY AT MELTING STATUS
+    if (p.meltStatus < 0.9f) {
+        // updatePlasticity(p, dt);
+    }
+
+    // CHANGE MATERIAL 
+    if (p.meltStatus >= 0.95f) {
+        p.materialType = MaterialType::Liquid;
+    }
 }
 
 void MPMSimulation::runTests() {

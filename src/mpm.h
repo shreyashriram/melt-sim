@@ -17,7 +17,8 @@ public:
 
     MPMSimulation();
     void addMeshParticles(std::vector<Vector3> sampledPoints);
-    void initializeParticles();
+    void spawnCube(MaterialType type, glm::vec3 center, float spacing, int countPerAxis);
+
     void step(float dt);
     void transferParticlesToGrid();
     void transferGridToParticles(float dt);
@@ -49,5 +50,14 @@ public:
     glm::mat3 computeStress(const Particle& p);
     void testComputeStress();
     void runTests();
+
+
+
+
+
+    /// !!! refactor
+    void updateSolidParticle(Particle& p, float dt);
+    void updateLiquidParticle(Particle& p, float dt);
+    void updateMeltingParticle(Particle& p, float dt);
 private:
 };
