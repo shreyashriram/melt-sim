@@ -37,10 +37,18 @@ void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
     Particle p;
     for (auto& pt : sampledPoints) {
         // Position the mesh higher for a longer fall
-        float mesh_translate = 1.75f;
+        float mesh_translate = 2.75f;
 
-        p = Particle(glm::vec3(pt.x()+1.5, pt.y()+mesh_translate, pt.z()+1.0), 
-                    glm::vec3(0.0f, -1.0f, 0.0f));  // Initial downward velocity
+        glm::vec3 translate = glm::vec3(1.5f, -0.5f, 1.0f);
+        glm::vec3 scale = glm::vec3(15.0f);
+
+
+        glm::mat3 rot90Y = glm::mat3(glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0, 1, 0)));
+
+        glm::vec3 new_pos = rot90Y * (glm::vec3(pt.x(), pt.y(), pt.z()) * scale) + translate;
+
+
+        p = Particle(new_pos, glm::vec3(0.0f, -1.0f, 0.0f));  // Initial downward velocity
         
         p.materialType = MaterialType::Solid;
         p.meltStatus = 0.0f;

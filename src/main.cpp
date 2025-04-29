@@ -120,15 +120,15 @@ int main()
     Plane myPlane(glm::vec3(0, 0, 0), 0, 10.0f);
 
     // ! Mesh Subsampling
-    Mesh myMesh("../src/assets/models/spot.obj");
-    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.08f,60,100.0f, 1);
+    Mesh myMesh("../src/assets/models/stanford-bunny.obj");
+    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.005f,60,100.0f, 1);
     // std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
     // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
-    // std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(500);
+    std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(100);
     // append both vectors
-    // sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
-    // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
+    sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
+    std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
     MPMSimulation mpmSim;
     mpmSim.addMeshParticles(sampledPoints);
@@ -166,10 +166,11 @@ int main()
      *   - Higher values (0.9-1.0): Very soft blending between particles
      */
     ParticleSplatter particleSplatter;
-    particleSplatter.init(0.08f, 1.00f); // Particle radius and smoothing
+    particleSplatter.init(0.15f, 1.00f); // Particle radius and smoothing
 
     // Time step for simulation
-    float deltaTime = 0.1f;
+    float deltaTime = 0.03f;
+    // float deltaTime = 0.00f;
 
     // * Rendering Matrices
     glm::mat4 model = glm::mat4(1.0f);
@@ -183,7 +184,7 @@ int main()
 
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
 
-    glm::vec3 lightPos(3.0f, 6.0f, 5.0f);
+    glm::vec3 lightPos(3.0f, -6.0f, 5.0f);
     glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
     glm::vec3 objectColor(0.0f, 0.4f, 0.7f);
 
@@ -212,8 +213,8 @@ int main()
 
         // // ! Util Drawing (Legacy static implementation)
         // drawAxes(shaderProgram, 10.0f);
-        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f);
-        mpmSim.grid.draw();
+        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f);
+        // mpmSim.grid.draw();
 
         // // Draw grid-node debug
         // gridRenderer.update(mpmSim.grid.nodes);
