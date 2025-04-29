@@ -9,22 +9,35 @@
 #include <Eigen/SVD>
 #include <random>  // Add this line for random number generation
 
-bool alreadyPrinted = false; //for debugging 
 
-// Create a random float between min and max
+
 float randomFloat(float min, float max) {
     static std::mt19937 rng(std::random_device{}()); // good random generator
     std::uniform_real_distribution<float> dist(min, max);
     return dist(rng);
 }
 
+void debugGroundImpact(const Particle& p) {
+    std::string typeStr;
+    switch (p.materialType) {
+        case MaterialType::Solid:    typeStr = "Solid";    break;
+        case MaterialType::Liquid:   typeStr = "Liquid";   break;
+        case MaterialType::Melting:  typeStr = "Melting";  break;
+        default:                     typeStr = "Unknown";  break;
+    }
+
+    std::cout << "Hit Ground | material: " << typeStr
+              << " | velocity: (" << p.velocity.x << ", " << p.velocity.y << ", " << p.velocity.z << ")"
+              << " | J: " << p.J << std::endl;
+}
+
 MPMSimulation::MPMSimulation() 
-    : youngsModulus(1.4e3f),        // Higher stiffness for better stability
+    : youngsModulus(1.0e3f),        // Higher stiffness for better stability
       poissonsRatio(0.495f),          // Less extreme for better stability
-      grid(10, 0.3f), 
+      grid(11, 0.25f), 
       yieldThreshold(0.15f),        // Higher threshold for more stability
-      meltRate(0.0f),               // More moderate melt rate
-      globalMeltProgress(1.0f) {    // Start fully solid
+      meltRate(1.0f),               // More moderate melt rate
+      globalMeltProgress(0.0f) {    // Start fully solid
     
     grid.setupBuffers();
     
@@ -33,14 +46,13 @@ MPMSimulation::MPMSimulation()
     bulkModulus = youngsModulus * poissonsRatio / ((1.0f + poissonsRatio) * (1.0f - 2.0f * poissonsRatio));
 }
 
-void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
+void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints, MaterialType type) {
     Particle p;
     for (auto& pt : sampledPoints) {
         // Position the mesh higher for a longer fall
-        float mesh_translate = 2.75f;
-
-        glm::vec3 translate = glm::vec3(1.5f, -0.5f, 1.0f);
-        glm::vec3 scale = glm::vec3(15.0f);
+        
+        glm::vec3 translate = glm::vec3(1.75f, 1.0f, 1.0f);
+        glm::vec3 scale = glm::vec3(10.0f);
 
 
         glm::mat3 rot90Y = glm::mat3(glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0, 1, 0)));
@@ -50,13 +62,18 @@ void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints) {
 
         p = Particle(new_pos, glm::vec3(0.0f, -1.0f, 0.0f));  // Initial downward velocity
         
-        p.materialType = MaterialType::Solid;
-        p.meltStatus = 0.0f;
+        p.materialType = type;
+        if (type == MaterialType::Solid) {
+            p.meltStatus = 0.0f;
+        } else if (type == MaterialType::Liquid) {
+            p.meltStatus = 1.0f;
+        } else if (type == MaterialType::Melting) {
+            p.meltStatus = 0.0f; // will melt over time
+        }
         
         particles.push_back(p);
     }
 }
-
 
 // In MPMSimulation.cpp, after updateParticles(...) but before your end of step():
 void MPMSimulation::resolveParticleCollisions(float radius, float stiffness) {
@@ -150,7 +167,6 @@ void MPMSimulation::spawnCube(MaterialType type, glm::vec3 center, float spacing
         }
     }
 }
-
 
 void MPMSimulation::step(float dt) {
     // Limit dt for stability
@@ -269,8 +285,10 @@ void MPMSimulation::updateGrid(float dt) {
                     // Scale forces for stability and smooth transition
                     float stressScale = 1.0f - (p.meltStatus * 0.3f); // Less reduction for stability
                     
+
+                    // & Force Damping!!
                     // Add force damping for stability
-                    glm::vec3 force = -p.volume * (stress * weightGrad) * stressScale * 0.5f;
+                    glm::vec3 force = -p.volume * (stress * weightGrad) * stressScale * 0.2f;
                     
                     int linearIdx = nodeIdx.x + nodeIdx.y * grid.size + nodeIdx.z * grid.size * grid.size;
                     grid.nodes[linearIdx].force += force;
@@ -403,7 +421,6 @@ void MPMSimulation::updateParticles(float dt) {
     float gridBoundary = grid.size * grid.spacing;
     
     for (auto& p : particles) {
-        // !!!! REFACTOR
         if (p.materialType == MaterialType::Solid) {
             updateSolidParticle(p, dt);
         } else if (p.materialType == MaterialType::Liquid) {
@@ -411,8 +428,6 @@ void MPMSimulation::updateParticles(float dt) {
         } else if (p.materialType == MaterialType::Melting) {
             updateMeltingParticle(p, dt);
         }
-
-        // !!!!!
     }
 }
 
@@ -686,7 +701,6 @@ glm::mat3 MPMSimulation::computeStress(const Particle& p) {
     return elasticStress * 0.8f;
 }
 
-
 void MPMSimulation::updateSolidParticle(Particle& p, float dt) {
     // TODO: fill this in next
 
@@ -708,7 +722,7 @@ void MPMSimulation::updateSolidParticle(Particle& p, float dt) {
             p.position.y = 0.0f;
             
             // ** JITTERING 
-            float splashJitter = 0.008f; // small randomness
+            float splashJitter = 0.004f; // small randomness
             p.position.x += randomFloat(-splashJitter, splashJitter);
             p.position.z += randomFloat(-splashJitter, splashJitter);
 
@@ -724,26 +738,16 @@ void MPMSimulation::updateSolidParticle(Particle& p, float dt) {
             float bounce = glm::mix(0.05f, baseBounce, velocityFactor);
             
             p.velocity.y = impactVelocity * bounce;
-
         
-            // // Add controlled horizontal splash for fluid particles
-            // if (p.meltStatus > 0.5f && impactVelocity > 2.0f) {
-            //     // Simple pseudo-random number based on particle position
-            //     float randX = glm::sin(p.position.x * 43.0f + p.position.z * 17.0f) * 0.5f + 0.5f;
-            //     float randZ = glm::cos(p.position.x * 23.0f + p.position.z * 31.0f) * 0.5f + 0.5f;
-                
-            //     // Reduced splash magnitude
-            //     float splashMagnitude = impactVelocity * 0.15f;
-            //     p.velocity.x += (randX * 2.0f - 1.0f) * splashMagnitude;
-            //     p.velocity.z += (randZ * 2.0f - 1.0f) * splashMagnitude;
-            // }
-            
 
             // ** DAMPING
             // Horizontal damping depends on melt status: [0.9: solid --> 0.98: liquid]
             float baseDamping = glm::mix(0.9f, 0.98f, p.meltStatus);
             p.velocity.x *= baseDamping;
             p.velocity.z *= baseDamping;
+
+
+            debugGroundImpact(p);
         } 
     }
 
@@ -802,13 +806,33 @@ void MPMSimulation::updateLiquidParticle(Particle& p, float dt) {
                 p.velocity.x *= baseDamping;
                 p.velocity.z *= baseDamping;
             } 
+
+            debugGroundImpact(p);
         }
     }
 }
 
 void MPMSimulation::updateMeltingParticle(Particle& p, float dt) {
     
-    float maxVel = 15.0f;
+    // ** MELTING RATE
+    // Update melt status
+    float floorHeight = 0.0f;
+    float fallHeight = 1.75f;
+    float maxMeltDist = fallHeight - floorHeight;
+
+    // How close to ground
+    float heightFactor = 1.0f - glm::clamp((p.position.y - floorHeight) / maxMeltDist, 0.0f, 1.0f);
+
+    // Combine height-based melting and global progress
+    float targetMeltStatus = heightFactor * globalMeltProgress * 0.7f;
+
+    // Slowly blend toward target
+    float meltRate = 0.9f;
+    p.meltStatus = glm::mix(p.meltStatus, targetMeltStatus, dt * meltRate);
+
+    // ** 
+
+    float maxVel = 9.0f;
     if (glm::length(p.velocity) > maxVel) {
         p.velocity = glm::normalize(p.velocity) * maxVel;
     }
@@ -852,6 +876,8 @@ void MPMSimulation::updateMeltingParticle(Particle& p, float dt) {
             float baseDamping = glm::mix(0.9f, 0.98f, p.meltStatus);
             p.velocity.x *= baseDamping;
             p.velocity.z *= baseDamping;
+
+            debugGroundImpact(p);
         }
     }
 
@@ -1083,3 +1109,6 @@ void MPMSimulation::testComputeStress() {
     
     std::cout << "=== End of computeStress testing ===\n";
 }
+
+
+

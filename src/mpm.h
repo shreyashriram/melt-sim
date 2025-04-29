@@ -16,7 +16,7 @@ public:
     std::vector<Particle> particles;
 
     MPMSimulation();
-    void addMeshParticles(std::vector<Vector3> sampledPoints);
+    void addMeshParticles(std::vector<Vector3> sampledPoints, MaterialType type);
     void spawnCube(MaterialType type, glm::vec3 center, float spacing, int countPerAxis);
 
     void step(float dt);
@@ -50,9 +50,6 @@ public:
     glm::mat3 computeStress(const Particle& p);
     void testComputeStress();
     void runTests();
-
-
-
 
 
     /// !!! refactor

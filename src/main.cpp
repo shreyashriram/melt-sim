@@ -33,6 +33,38 @@ const unsigned int SCR_HEIGHT = 600;
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+
+#include <fstream>
+
+// Load points from a text file
+std::vector<Vector3> loadPoints(const std::string& filename) {
+    std::vector<Vector3> points;
+    std::ifstream in(filename);
+    if (!in.is_open()) {
+        std::cerr << "Failed to open file for reading: " << filename << std::endl;
+        return points;
+    }
+    float x, y, z;
+    while (in >> x >> y >> z) {
+        points.emplace_back(x, y, z);
+    }
+    return points;
+}
+
+void savePoints(const std::vector<Vector3>& points, const std::string& filename) {
+    std::ofstream out(filename);
+    if (!out.is_open()) {
+        std::cerr << "Failed to open file for writing: " << filename << std::endl;
+        return;
+    }
+    for (const auto& p : points) {
+        out << p.x() << " " << p.y() << " " << p.z() << "\n";
+    }
+    out.close();
+}
+
+
+
 void drawAxes(GLuint shaderProgram, float axisLength = 10.0f)
 {
     static GLuint vao = 0, vbo = 0;
@@ -90,9 +122,10 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-#ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif
+
+    #ifdef __APPLE__
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    #endif
 
     GLFWwindow *window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "MeltSim", NULL, NULL);
     if (window == NULL)
@@ -111,29 +144,53 @@ int main()
     }
 
     unsigned int shaderProgram = createShaderProgram("../src/assets/shaders/vertex_shader.glsl", "../src/assets/shaders/fragment_shader.glsl");
-    // unsigned int splatterShader = createShaderProgram("../src/assets/shaders/splatter_vertex_shader.glsl", "../src/assets/shaders/splatter_fragment_shader.glsl");
-
-    unsigned int gridShaderProgram = createShaderProgramEnhanced(
-        "../src/assets/shaders/grid_vertex_shader.glsl",
-        "../src/assets/shaders/grid_fragment_shader.glsl");
+    unsigned int gridShaderProgram = createShaderProgramEnhanced("../src/assets/shaders/grid_vertex_shader.glsl","../src/assets/shaders/grid_fragment_shader.glsl");
     
     Plane myPlane(glm::vec3(0, 0, 0), 0, 10.0f);
 
     // ! Mesh Subsampling
     Mesh myMesh("../src/assets/models/stanford-bunny.obj");
-    std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.005f,60,100.0f, 1);
-    // std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
+
+    std::vector<Vector3> sampledPoints;
+    std::vector<Vector3> sampledPointsVolume;
+
+    bool loadSamples = true; // you can toggle this manually or check file existence
+
+    if (loadSamples) {
+        std::cout << "loading point" << std::endl;
+        sampledPoints = loadPoints("bunny_surface_samples.txt");
+        sampledPointsVolume = loadPoints("bunny_surface_samples.txt");
+
+        std::cout << "worked" << std::endl;
+    } else {
+        std::cout << "sampling point" << std::endl;
+        sampledPoints = myMesh.sampleSurfacePoints(0.005f, 60, 100.0f, 1);
+        sampledPointsVolume = myMesh.sampleVolumePoints(500);
+        savePoints(sampledPoints, "bunny_surface_samples.txt");
+        savePoints(sampledPointsVolume, "bunny_volume_samples.txt");
+
+        std::cout << "worked" << std::endl;
+    }
+
+    // std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.005f,60,100.0f, 1);
+    // // std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
+    // std::cout << "Sampled " << sampledPointsVolume.size() << " points from the mesh." << std::endl;
+
+    // std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(1000);
     // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
-    std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(100);
-    // append both vectors
-    sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
-    std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
+    // savePoints(sampledPoints, "bunny_surface_samples.txt");
+    // std::cout << "saved to txt." << std::endl;
+    // savePoints(sampledPointsVolume,"../src/assets/models/stanford-bunny-volume.txt");
+    // // // append both vectors
+    // // sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
+    // // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
     MPMSimulation mpmSim;
-    mpmSim.addMeshParticles(sampledPoints);
+    mpmSim.addMeshParticles(sampledPoints, MaterialType::Liquid);
+    mpmSim.addMeshParticles(sampledPointsVolume, MaterialType::Melting);
 
-    // mpmSim.spawnCube(MaterialType::Solid, glm::vec3(1.50f, 2.0f, 1.50f), 0.1f, 10);
+    // mpmSim.spawnCube(MaterialType::Solid, glm::vec3(1.50f, 2.5f, 1.50f), 0.1f, 10);
     // mpmSim.spawnCube(MaterialType::Solid, glm::vec3(1.50f, 3.0f, 1.50f), 0.1f, 15);
 
      // ! Grid Setup
@@ -145,31 +202,11 @@ int main()
     // particleRenderer.init(mpmSim.particles);
 
     // ! Particle Splatter Setup
-    // Initialize the particle splatter with desired settings
-    /*
-     * particleRadius: Controls the size of each particle splat
-     * - Range: 0.01 - 0.15
-     * - Default: 0.05
-     * - Effects:
-     *   - Smaller values (0.01-0.04): More detailed but potentially grainy fluid
-     *   - Medium values (0.05-0.08): Good balance of detail and smoothness
-     *   - Larger values (0.09-0.15): Smoother but less detailed fluid appearance
-     */
-
-    /*
-     * smoothingKernel: Controls the edge softness of particles
-     * - Range: 0.5 - 1.0
-     * - Default: 0.8
-     * - Effects:
-     *   - Lower values (0.5-0.6): Sharper particle edges, more distinct particles
-     *   - Medium values (0.7-0.8): Natural soft edges
-     *   - Higher values (0.9-1.0): Very soft blending between particles
-     */
     ParticleSplatter particleSplatter;
-    particleSplatter.init(0.15f, 1.00f); // Particle radius and smoothing
+    particleSplatter.init(0.09f, 1.00f); // Particle radius and smoothing
 
     // Time step for simulation
-    float deltaTime = 0.03f;
+    float deltaTime = 0.07f;
     // float deltaTime = 0.00f;
 
     // * Rendering Matrices
@@ -191,7 +228,13 @@ int main()
     while (!glfwWindowShouldClose(window))
     {
         glDisable(GL_CULL_FACE);
-        glEnable(GL_DEPTH_TEST);
+
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE); // important to avoid z-buffer blocking transparent fragments
+        
+
         processInput(window);
     
         glClearColor(.9f, 0.9f, 0.9f, 1.0f);
@@ -213,8 +256,8 @@ int main()
 
         // // ! Util Drawing (Legacy static implementation)
         // drawAxes(shaderProgram, 10.0f);
-        // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f);
-        // mpmSim.grid.draw();
+        glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.0f, 0.0f, 0.0f);
+        mpmSim.grid.draw();
 
         // // Draw grid-node debug
         // gridRenderer.update(mpmSim.grid.nodes);
@@ -237,6 +280,9 @@ int main()
         particleSplatter.update(mpmSim.particles);
         // Draw the particles with the enhanced fluid effects
         particleSplatter.draw(model, view, projection);
+
+        // gridRenderer.update(mpmSim.grid.nodes);
+        // gridRenderer.draw(model, view, projection, gridShaderProgram);
 
         // // ! Draw Mesh
         // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.2f, 0.5f, 1.0f);
