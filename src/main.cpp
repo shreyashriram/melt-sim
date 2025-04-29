@@ -131,9 +131,10 @@ int main()
     // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
         //move the mesh lower and to the left
-    for (auto& pt : sampledPoints) {
-        pt.x() -= 0.75f;
-    }
+    // for (auto& pt : sampledPoints) {
+    //     pt.x() -= 0.75f;
+    //     pt.y() -= 0.75f;
+    // }
 
     MPMSimulation mpmSim;
     mpmSim.addMeshParticles(sampledPoints);
@@ -168,7 +169,7 @@ int main()
      *   - Higher values (0.9-1.0): Very soft blending between particles
      */
     ParticleSplatter particleSplatter;
-    particleSplatter.init(0.06f, 1.00f); // Particle radius and smoothing
+    particleSplatter.init(0.15f, 1.00f); // Particle radius and smoothing
     // Time step for simulation
     float deltaTime = 0.2f;
 

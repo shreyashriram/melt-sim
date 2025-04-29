@@ -19,7 +19,7 @@ float randomFloat(float min, float max) {
 }
 
 MPMSimulation::MPMSimulation() 
-    : youngsModulus(2.0e4f),  // Higher stiffness for better stability
+    : youngsModulus(1.0e-4f),  // Higher stiffness for better stability
       poissonsRatio(0.4f),    // Less extreme for better stability
       grid(5, 0.5f), 
       yieldThreshold(0.05f),  // Higher threshold for more stability
@@ -82,6 +82,10 @@ void MPMSimulation::step(float dt) {
     updateGrid(stableDt);
     transferGridToParticles(stableDt);
     updateParticles(stableDt);
+    resolveParticleCollisions(
+        /*radius=*/0.05f,    // tweak to your particle “size”
+        /*stiffness=*/0.2f   // 0 = perfectly plastic, 1 = perfectly elastic
+      );
 }
 
 void MPMSimulation::transferParticlesToGrid() { 
@@ -152,6 +156,70 @@ void MPMSimulation::transferParticlesToGrid() {
     }
 }
 
+void MPMSimulation::resolveParticleCollisions(float radius, float stiffness) {
+    // 1) Build a simple uniform grid index
+    float invCellSize = 1.0f / (radius * 2.0f);
+    struct Cell { std::vector<int> ids; };
+    std::unordered_map<long long, Cell> gridMap;
+    gridMap.reserve(particles.size() * 2);
+
+    auto hash = [&](const glm::ivec3 &c){
+        // pack three 21-bit coords into one 64-bit key
+        return ( (long long)c.x & 0x1FFFFFLL )
+             | (((long long)c.y & 0x1FFFFFLL) << 21)
+             | (((long long)c.z & 0x1FFFFFLL) << 42);
+    };
+
+    // assign each particle to a cell
+    for (int i = 0; i < (int)particles.size(); ++i) {
+        glm::ivec3 cell = glm::floor(particles[i].position * invCellSize);
+        gridMap[hash(cell)].ids.push_back(i);
+    }
+
+    // 2) For each particle, only test neighbors in nearby cells
+    float r2 = radius*radius;
+    for (int i = 0; i < (int)particles.size(); ++i) {
+        auto &pi = particles[i];
+        glm::ivec3 baseCell = glm::floor(pi.position * invCellSize);
+
+        for (int dx = -1; dx <= 1; ++dx) {
+        for (int dy = -1; dy <= 1; ++dy) {
+        for (int dz = -1; dz <= 1; ++dz) {
+            glm::ivec3 nc = baseCell + glm::ivec3(dx, dy, dz);
+            auto it = gridMap.find(hash(nc));
+            if (it == gridMap.end()) continue;
+
+            for (int j : it->second.ids) {
+                if (j <= i) continue;           // don’t double-count
+                auto &pj = particles[j];
+
+                glm::vec3 d = pj.position - pi.position;
+                float d2 = glm::dot(d, d);
+                if (d2 >= r2 || d2 < 1e-7f) continue;
+
+                float dist = sqrt(d2);
+                glm::vec3 nrm = d / dist;
+
+                // 3) position correction: push them half the overlap each
+                float penetration = radius - dist;
+                glm::vec3 corr = 0.5f * penetration * nrm;
+                pi.position -= corr;
+                pj.position += corr;
+
+                // 4) simple impulse exchange for bounce/stick
+                glm::vec3 relVel = pj.velocity - pi.velocity;
+                float vn = glm::dot(relVel, nrm);
+                if (vn < 0.0f) {
+                    float impulse = -(1.0f + stiffness) * vn / 2.0f;
+                    glm::vec3 J = impulse * nrm;
+                    pi.velocity -= J;
+                    pj.velocity += J;
+                }
+            }
+        }}} 
+    }
+}
+
 void MPMSimulation::updateGrid(float dt) {
     // First compute forces from stress for each particle
     for (const auto& p : particles) {
@@ -191,7 +259,7 @@ void MPMSimulation::updateGrid(float dt) {
     for (size_t idx = 0; idx < grid.nodes.size(); idx++) {
         auto& node = grid.nodes[idx];
         if (node.mass > 0.0f) {
-            // Add reduced gravity for better stability
+            // Add reduced step for better stability
             node.force += glm::vec3(0.0f, -5.8f, 0.0f) * node.mass;
             
             // Apply velocity diffusion for fluid-like behavior

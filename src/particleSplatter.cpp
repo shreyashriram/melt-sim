@@ -11,7 +11,7 @@ ParticleSplatter::ParticleSplatter()
       radius(0.1f), smoothing(0.8f),
       surfaceTensionStrength(1.2f), blendDistance(0.15f),
       waterColor(0.2f, 0.5f, 0.8f),
-      reflectionStrength(0.8f), specularPower(30.0f), specularStrength(2.0f),
+      reflectionStrength(0.8f), specularPower(25.0f), specularStrength(2.0f),
       fresnelBias(0.25f), fresnelScale(1.0f), fresnelPower(5.0f),
       rippleStrength(0.15f), rippleSpeed(1.0f),
       reflectionsEnabled(true), refractionsEnabled(true),

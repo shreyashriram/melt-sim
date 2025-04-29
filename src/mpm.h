@@ -46,5 +46,6 @@ public:
     glm::mat3 computeStress(const Particle& p);
     void testComputeStress();
     void runTests();
+    void resolveParticleCollisions(float radius, float stiffness);
 private:
 };
