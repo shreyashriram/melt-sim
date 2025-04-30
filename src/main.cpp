@@ -10,7 +10,7 @@
 #include "floor.h"
 #include "plane.h"
 #include "input.h"
-
+#include <fstream>
 #include <iostream>
 
 #include "leaven/surfaceSampler.h"
@@ -27,16 +27,14 @@ using Vector3 = Eigen::Matrix<scalar, 3, 1>;
 #include "particleSplatter.h"
 #include "gridRenderer.h"
 
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
-
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 
-#include <fstream>
+const unsigned int SCR_WIDTH = 800;
+const unsigned int SCR_HEIGHT = 600;
 
-// Load points from a text file
+
 std::vector<Vector3> loadPoints(const std::string& filename) {
     std::vector<Vector3> points;
     std::ifstream in(filename);
@@ -62,8 +60,6 @@ void savePoints(const std::vector<Vector3>& points, const std::string& filename)
     }
     out.close();
 }
-
-
 
 void drawAxes(GLuint shaderProgram, float axisLength = 10.0f)
 {
@@ -118,6 +114,7 @@ void drawAxes(GLuint shaderProgram, float axisLength = 10.0f)
 
 int main()
 {
+    // * Window Setup
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -145,8 +142,6 @@ int main()
 
     unsigned int shaderProgram = createShaderProgram("../src/assets/shaders/vertex_shader.glsl", "../src/assets/shaders/fragment_shader.glsl");
     unsigned int gridShaderProgram = createShaderProgramEnhanced("../src/assets/shaders/grid_vertex_shader.glsl","../src/assets/shaders/grid_fragment_shader.glsl");
-    
-    Plane myPlane(glm::vec3(0, 0, 0), 0, 10.0f);
 
     // ! Mesh Subsampling
     Mesh myMesh("../src/assets/models/stanford-bunny.obj");
@@ -172,32 +167,19 @@ int main()
         std::cout << "worked" << std::endl;
     }
 
-    // std::vector<Vector3> sampledPoints = myMesh.sampleSurfacePoints(0.005f,60,100.0f, 1);
-    // // std::vector<Vector3> sampledPoints = myMesh.sampleVolumePoints(1000);
-    // std::cout << "Sampled " << sampledPointsVolume.size() << " points from the mesh." << std::endl;
-
-    // std::vector<Vector3> sampledPointsVolume = myMesh.sampleVolumePoints(1000);
-    // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
-
-    // savePoints(sampledPoints, "bunny_surface_samples.txt");
-    // std::cout << "saved to txt." << std::endl;
-    // savePoints(sampledPointsVolume,"../src/assets/models/stanford-bunny-volume.txt");
-    // // // append both vectors
-    // // sampledPoints.insert(sampledPoints.end(), sampledPointsVolume.begin(), sampledPointsVolume.end());
-    // // std::cout << "Sampled " << sampledPoints.size() << " points from the mesh." << std::endl;
 
     MPMSimulation mpmSim;
-    mpmSim.addMeshParticles(sampledPoints, MaterialType::Liquid);
-    mpmSim.addMeshParticles(sampledPointsVolume, MaterialType::Melting);
+    mpmSim.addMeshParticles(sampledPoints, MaterialType::Solid);
+    mpmSim.addMeshParticles(sampledPointsVolume, MaterialType::Solid);
 
     // mpmSim.spawnCube(MaterialType::Solid, glm::vec3(1.50f, 2.5f, 1.50f), 0.1f, 10);
     // mpmSim.spawnCube(MaterialType::Solid, glm::vec3(1.50f, 3.0f, 1.50f), 0.1f, 15);
 
      // ! Grid Setup
-     GridRenderer gridRenderer(mpmSim.grid.size, mpmSim.grid.spacing);
-     gridRenderer.init();
+    //  GridRenderer gridRenderer(mpmSim.grid.size, mpmSim.grid.spacing);
+    //  gridRenderer.init();
 
-    // // ! Particle Setup
+    // ! Particle Setup
     // ParticleRenderer particleRenderer;
     // particleRenderer.init(mpmSim.particles);
 
@@ -205,8 +187,8 @@ int main()
     ParticleSplatter particleSplatter;
     particleSplatter.init(0.09f, 1.00f); // Particle radius and smoothing
 
-    // Time step for simulation
-    float deltaTime = 0.07f;
+    // ! Time Step
+    float deltaTime = 0.04f;
     // float deltaTime = 0.00f;
 
     // * Rendering Matrices
@@ -228,11 +210,9 @@ int main()
     while (!glfwWindowShouldClose(window))
     {
         glDisable(GL_CULL_FACE);
-
-
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthMask(GL_FALSE); // important to avoid z-buffer blocking transparent fragments
+        glDepthMask(GL_FALSE); 
         
 
         processInput(window);
@@ -250,7 +230,7 @@ int main()
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightPos"), 1, glm::value_ptr(lightPos));
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightColor"), 1, glm::value_ptr(lightColor));
 
-        // Update simulation
+
         mpmSim.step(deltaTime);
         // particleRenderer.update(mpmSim.particles);
 
@@ -287,6 +267,8 @@ int main()
         // // ! Draw Mesh
         // glUniform3f(glGetUniformLocation(shaderProgram, "objectColor"), 0.2f, 0.5f, 1.0f);
         // myMesh.draw();
+
+
 
         glfwSwapBuffers(window);
         glfwPollEvents();

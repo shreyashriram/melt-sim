@@ -25,12 +25,13 @@ public:
     void updateParticles(float dt);
     void computeForces();
     void updateGrid(float dt);
-    // In MPMSimulation.h add:
+    
     void resolveParticleCollisions(float radius, float stiffness);
 
 
     float youngsModulus;
     float poissonsRatio;
+    
     // Lamé parameters (derived from Young's modulus and Poisson's ratio)
     float shearModulus;       // Controls resistance to shape change (μ)
     float bulkModulus;        // Controls resistance to volume change (λ)
@@ -52,9 +53,9 @@ public:
     void runTests();
 
 
-    /// !!! refactor
+
     void updateSolidParticle(Particle& p, float dt);
     void updateLiquidParticle(Particle& p, float dt);
     void updateMeltingParticle(Particle& p, float dt);
-private:
+
 };

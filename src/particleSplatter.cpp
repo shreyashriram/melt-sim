@@ -355,12 +355,12 @@ void ParticleSplatter::draw(const glm::mat4& model, const glm::mat4& view, const
     // Set lighting parameters
     GLint lightPosLoc = glGetUniformLocation(shaderProgram, "lightPos");
     if (lightPosLoc != -1) {
-        glUniform3f(lightPosLoc, 5.0f, 5.0f, 5.0f); // Light position
+        glUniform3f(lightPosLoc, 3.0f, 1.5f, 1.0f); // Light position
     }
     
     GLint lightColorLoc = glGetUniformLocation(shaderProgram, "lightColor");
     if (lightColorLoc != -1) {
-        glUniform3f(lightColorLoc, 1.0f, 1.0f, 1.0f); // White light
+        glUniform3f(lightColorLoc, 0.5f, .5f, 0.5f); // White light
     }
     
     // Set water color

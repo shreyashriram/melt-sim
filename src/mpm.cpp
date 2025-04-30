@@ -1,4 +1,6 @@
-#define GLM_ENABLE_EXPERIMENTAL  // Add this line before any GLM includes
+
+
+#define GLM_ENABLE_EXPERIMENTAL  
 #include "mpm.h"
 #include "particle.h"
 #include "grid.h"
@@ -7,9 +9,7 @@
 #include <iostream>
 #include <Eigen/Dense>
 #include <Eigen/SVD>
-#include <random>  // Add this line for random number generation
-
-
+#include <random>  
 
 float randomFloat(float min, float max) {
     static std::mt19937 rng(std::random_device{}()); // good random generator
@@ -32,11 +32,11 @@ void debugGroundImpact(const Particle& p) {
 }
 
 MPMSimulation::MPMSimulation() 
-    : youngsModulus(1.0e3f),        // Higher stiffness for better stability
-      poissonsRatio(0.495f),          // Less extreme for better stability
-      grid(11, 0.25f), 
+    : youngsModulus(1.0e4f),        // Higher stiffness for better stability
+      poissonsRatio(0.4f),          // Less extreme for better stability
+      grid(10, 0.25), 
       yieldThreshold(0.15f),        // Higher threshold for more stability
-      meltRate(1.0f),               // More moderate melt rate
+      meltRate(0.2f),               // More moderate melt rate
       globalMeltProgress(0.0f) {    // Start fully solid
     
     grid.setupBuffers();
@@ -51,11 +51,11 @@ void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints, Materia
     for (auto& pt : sampledPoints) {
         // Position the mesh higher for a longer fall
         
-        glm::vec3 translate = glm::vec3(1.75f, 1.0f, 1.0f);
+        glm::vec3 translate = glm::vec3(1.5f, 1.0f, 1.0f);
         glm::vec3 scale = glm::vec3(10.0f);
 
 
-        glm::mat3 rot90Y = glm::mat3(glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0, 1, 0)));
+        glm::mat3 rot90Y = glm::mat3(glm::rotate(glm::mat4(1.0f), glm::radians(100.0f), glm::vec3(0, 1, 0)));
 
         glm::vec3 new_pos = rot90Y * (glm::vec3(pt.x(), pt.y(), pt.z()) * scale) + translate;
 
@@ -72,71 +72,6 @@ void MPMSimulation::addMeshParticles(std::vector<Vector3> sampledPoints, Materia
         }
         
         particles.push_back(p);
-    }
-}
-
-// In MPMSimulation.cpp, after updateParticles(...) but before your end of step():
-void MPMSimulation::resolveParticleCollisions(float radius, float stiffness) {
-    // 1) Build a simple uniform grid index
-    float invCellSize = 1.0f / (radius * 2.0f);
-    struct Cell { std::vector<int> ids; };
-    std::unordered_map<long long, Cell> gridMap;
-    gridMap.reserve(particles.size() * 2);
-
-    auto hash = [&](const glm::ivec3 &c){
-        // pack three 21-bit coords into one 64-bit key
-        return ( (long long)c.x & 0x1FFFFFLL )
-             | (((long long)c.y & 0x1FFFFFLL) << 21)
-             | (((long long)c.z & 0x1FFFFFLL) << 42);
-    };
-
-    // assign each particle to a cell
-    for (int i = 0; i < (int)particles.size(); ++i) {
-        glm::ivec3 cell = glm::floor(particles[i].position * invCellSize);
-        gridMap[hash(cell)].ids.push_back(i);
-    }
-
-    // 2) For each particle, only test neighbors in nearby cells
-    float r2 = radius*radius;
-    for (int i = 0; i < (int)particles.size(); ++i) {
-        auto &pi = particles[i];
-        glm::ivec3 baseCell = glm::floor(pi.position * invCellSize);
-
-        for (int dx = -1; dx <= 1; ++dx) {
-        for (int dy = -1; dy <= 1; ++dy) {
-        for (int dz = -1; dz <= 1; ++dz) {
-            glm::ivec3 nc = baseCell + glm::ivec3(dx, dy, dz);
-            auto it = gridMap.find(hash(nc));
-            if (it == gridMap.end()) continue;
-
-            for (int j : it->second.ids) {
-                if (j <= i) continue;           // don’t double-count
-                auto &pj = particles[j];
-
-                glm::vec3 d = pj.position - pi.position;
-                float d2 = glm::dot(d, d);
-                if (d2 >= r2 || d2 < 1e-7f) continue;
-
-                float dist = sqrt(d2);
-                glm::vec3 nrm = d / dist;
-
-                // 3) position correction: push them half the overlap each
-                float penetration = radius - dist;
-                glm::vec3 corr = 0.5f * penetration * nrm;
-                pi.position -= corr;
-                pj.position += corr;
-
-                // 4) simple impulse exchange for bounce/stick
-                glm::vec3 relVel = pj.velocity - pi.velocity;
-                float vn = glm::dot(relVel, nrm);
-                if (vn < 0.0f) {
-                    float impulse = -(1.0f + stiffness) * vn / 2.0f;
-                    glm::vec3 J = impulse * nrm;
-                    pi.velocity -= J;
-                    pj.velocity += J;
-                }
-            }
-        }}} 
     }
 }
 
@@ -302,7 +237,7 @@ void MPMSimulation::updateGrid(float dt) {
         auto& node = grid.nodes[idx];
         if (node.mass > 0.0f) {
             // Add reduced gravity for better stability
-            node.force += glm::vec3(0.0f, -9.8f, 0.0f) * node.mass;
+            node.force += glm::vec3(0.0f, -5.8f, 0.0f) * node.mass;
             
             // Apply velocity diffusion for fluid-like behavior
             glm::vec3 avgNeighborVel(0.0f);
@@ -342,18 +277,18 @@ void MPMSimulation::updateGrid(float dt) {
             if (totalWeight > 0.0f) {
                 avgNeighborVel /= totalWeight;
                 // Moderate diffusion strength for stability
-                float diffusionStrength = 0.0f;
+                float diffusionStrength = 0.96f;
                 node.velocity = glm::mix(node.velocity, avgNeighborVel, diffusionStrength);
             }
             
             // Apply mild velocity damping for stability
-            // node.velocity *= 0.995f;
+            node.velocity *= 0.995f;
             
             // Update velocity with forces (with damping)
             node.velocity += (node.force / node.mass) * dt * 0.8f;
             
             // Clamp extreme velocities for stability
-            float maxVel = 10.0f;
+            float maxVel = 5.0f;
             if (glm::length(node.velocity) > maxVel) {
                 node.velocity = glm::normalize(node.velocity) * maxVel;
             }
@@ -699,12 +634,14 @@ glm::mat3 MPMSimulation::computeStress(const Particle& p) {
     
     // Apply global stress damping factor for stability
     return elasticStress * 0.8f;
+
+    
 }
 
 void MPMSimulation::updateSolidParticle(Particle& p, float dt) {
     // TODO: fill this in next
 
-    float maxVel = 15.0f;
+    float maxVel = 12.0f;
     if (glm::length(p.velocity) > maxVel) {
         p.velocity = glm::normalize(p.velocity) * maxVel;
     }
@@ -722,7 +659,7 @@ void MPMSimulation::updateSolidParticle(Particle& p, float dt) {
             p.position.y = 0.0f;
             
             // ** JITTERING 
-            float splashJitter = 0.004f; // small randomness
+            float splashJitter = 0.001f; // small randomness
             p.position.x += randomFloat(-splashJitter, splashJitter);
             p.position.z += randomFloat(-splashJitter, splashJitter);
 
@@ -742,7 +679,7 @@ void MPMSimulation::updateSolidParticle(Particle& p, float dt) {
 
             // ** DAMPING
             // Horizontal damping depends on melt status: [0.9: solid --> 0.98: liquid]
-            float baseDamping = glm::mix(0.9f, 0.98f, p.meltStatus);
+            float baseDamping = glm::mix(0.5f, 0.98f, p.meltStatus);
             p.velocity.x *= baseDamping;
             p.velocity.z *= baseDamping;
 
@@ -827,12 +764,12 @@ void MPMSimulation::updateMeltingParticle(Particle& p, float dt) {
     float targetMeltStatus = heightFactor * globalMeltProgress * 0.7f;
 
     // Slowly blend toward target
-    float meltRate = 0.9f;
+    float meltRate = 0.1f;
     p.meltStatus = glm::mix(p.meltStatus, targetMeltStatus, dt * meltRate);
 
     // ** 
 
-    float maxVel = 9.0f;
+    float maxVel = 6.0f;
     if (glm::length(p.velocity) > maxVel) {
         p.velocity = glm::normalize(p.velocity) * maxVel;
     }
@@ -846,7 +783,7 @@ void MPMSimulation::updateMeltingParticle(Particle& p, float dt) {
             p.position.y = 0.0f;
 
             // ** JITTERING 
-            float splashJitter = glm::mix(0.008f, 0.015f, p.meltStatus); // blend between solid jitter and liquid jitter
+            float splashJitter = glm::mix(0.008f, 0.030f, p.meltStatus); // blend between solid jitter and liquid jitter
             p.position.x += randomFloat(-splashJitter, splashJitter);
             p.position.z += randomFloat(-splashJitter, splashJitter);
 
@@ -892,223 +829,3 @@ void MPMSimulation::updateMeltingParticle(Particle& p, float dt) {
         p.materialType = MaterialType::Liquid;
     }
 }
-
-void MPMSimulation::runTests() {
-    std::cout << "\n=== Starting MPM Tests ===" << std::endl;
-    
-    // Test 1: Weight Gradient
-    std::cout << "\nTest 1: Weight Gradient" << std::endl;
-    grid.spacing = 0.25f;
-    glm::vec3 particlePos(0.003f, 0.003f, 0.003f); // this is within the kernel support range
-    glm::vec3 nodePos(0.0f, 0.0f, 0.0f); // node is at the origin    
-    glm::vec3 gradient = computeWeightGradient(particlePos, nodePos);
-    
-    std::cout << "Expected: Gradient should point from node to particle" << std::endl;
-    std::cout << "Gradient: (" << gradient.x << ", " << gradient.y << ", " << gradient.z << ")" << std::endl;
-    
-    // Test 2: Polar Decomposition
-    std::cout << "\nTest 2: Polar Decomposition" << std::endl;
-    // Create a known rotation matrix (45 degrees around Z-axis)
-    float angle = glm::radians(45.0f);
-    float c = cos(angle);
-    float s = sin(angle);
-    glm::mat3 rotation(
-        c, -s, 0.0f,
-        s,  c, 0.0f,
-        0.0f, 0.0f, 1.0f
-    );
-    
-    // Create a known stretch matrix
-    glm::mat3 stretch(
-        2.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 1.0f
-    );
-    
-    // Compose deformation gradient F = R * S
-    glm::mat3 F = rotation * stretch;
-    
-    // Decompose
-    glm::mat3 R, S;
-    polarDecomposition(F, R, S);
-    
-    // Verify results
-    std::cout << "\nVerification:" << std::endl;
-    std::cout << "Input matrix should be rotation * stretch" << std::endl;
-    std::cout << "R should be close to rotation matrix" << std::endl;
-    std::cout << "S should be close to stretch matrix" << std::endl;
-    
-    // Compute errors
-    float rotationError = 0.0f;
-    float stretchError = 0.0f;
-    for(int i = 0; i < 3; i++) {
-        for(int j = 0; j < 3; j++) {
-            rotationError = std::max(rotationError, std::abs(R[i][j] - rotation[i][j]));
-            stretchError = std::max(stretchError, std::abs(S[i][j] - stretch[i][j]));
-        }
-    }
-    
-    std::cout << "Rotation error: " << rotationError << std::endl;
-    std::cout << "Stretch error: " << stretchError << std::endl;
-    
-    std::cout << "\n=== Tests Complete ===" << std::endl;
-}
-
-void MPMSimulation::testComputeStress() {
-    std::cout << "=== Testing computeStress function ===\n";
-    
-    // Create a test particle with known F
-    Particle testParticle;
-    
-    // Test 1: Identity deformation (no stress)
-    testParticle.F = glm::mat3(1.0f); // Identity matrix
-    testParticle.meltStatus = 0.0f;
-    
-    std::cout << "Test 1: Identity deformation\n";
-    std::cout << "Input F = Identity matrix\n";
-    
-    glm::mat3 stress1 = computeStress(testParticle);
-    
-    std::cout << "Resulting stress:\n";
-    for (int i = 0; i < 3; i++) {
-        std::cout << "[ ";
-        for (int j = 0; j < 3; j++) {
-            std::cout << stress1[i][j] << " ";
-        }
-        std::cout << "]\n";
-    }
-    std::cout << "Expected: All zeros (or very small values)\n\n";
-    
-    // Test 2: Simple stretch
-    testParticle.F = glm::mat3(1.0f);
-    testParticle.F[0][0] = 1.1f; // 10% stretch in x direction
-    
-    std::cout << "Test 2: 10% stretch in x direction\n";
-    std::cout << "Input F:\n";
-    for (int i = 0; i < 3; i++) {
-        std::cout << "[ ";
-        for (int j = 0; j < 3; j++) {
-            std::cout << testParticle.F[i][j] << " ";
-        }
-        std::cout << "]\n";
-    }
-    
-    glm::mat3 stress2 = computeStress(testParticle);
-    
-    std::cout << "Resulting stress:\n";
-    for (int i = 0; i < 3; i++) {
-        std::cout << "[ ";
-        for (int j = 0; j < 3; j++) {
-            std::cout << stress2[i][j] << " ";
-        }
-        std::cout << "]\n";
-    }
-    std::cout << "Expected: Positive stress in x direction\n\n";
-    
-    // Test 3: Simple shear
-    testParticle.F = glm::mat3(1.0f);
-    testParticle.F[0][1] = 0.1f; // Shear in xy plane
-    
-    std::cout << "Test 3: Shear in xy plane\n";
-    std::cout << "Input F:\n";
-    for (int i = 0; i < 3; i++) {
-        std::cout << "[ ";
-        for (int j = 0; j < 3; j++) {
-            std::cout << testParticle.F[i][j] << " ";
-        }
-        std::cout << "]\n";
-    }
-    
-    glm::mat3 stress3 = computeStress(testParticle);
-    
-    std::cout << "Resulting stress:\n";
-    for (int i = 0; i < 3; i++) {
-        std::cout << "[ ";
-        for (int j = 0; j < 3; j++) {
-            std::cout << stress3[i][j] << " ";
-        }
-        std::cout << "]\n";
-    }
-    std::cout << "Expected: Shear stress in xy plane\n\n";
-    
-    // Test 4: Large deformation
-    testParticle.F = glm::mat3(1.0f);
-    testParticle.F[0][0] = 2.0f; // Large stretch in x direction
-    
-    std::cout << "Test 4: Large stretch (100% stretch in x direction)\n";
-    std::cout << "Input F:\n";
-    for (int i = 0; i < 3; i++) {
-        std::cout << "[ ";
-        for (int j = 0; j < 3; j++) {
-            std::cout << testParticle.F[i][j] << " ";
-        }
-        std::cout << "]\n";
-    }
-    
-    glm::mat3 stress4 = computeStress(testParticle);
-    
-    std::cout << "Resulting stress:\n";
-    for (int i = 0; i < 3; i++) {
-        std::cout << "[ ";
-        for (int j = 0; j < 3; j++) {
-            std::cout << stress4[i][j] << " ";
-        }
-        std::cout << "]\n";
-    }
-    std::cout << "Expected: Large positive stress in x direction\n\n";
-    
-    // Test 5: Rotation (should give zero stress in co-rotational model)
-    float angle = glm::radians(45.0f);
-    float c = cos(angle);
-    float s = sin(angle);
-    testParticle.F = glm::mat3(
-        c, -s, 0.0f,
-        s,  c, 0.0f,
-        0.0f, 0.0f, 1.0f
-    );
-    
-    std::cout << "Test 5: Pure rotation (45 degrees)\n";
-    std::cout << "Input F:\n";
-    for (int i = 0; i < 3; i++) {
-        std::cout << "[ ";
-        for (int j = 0; j < 3; j++) {
-            std::cout << testParticle.F[i][j] << " ";
-        }
-        std::cout << "]\n";
-    }
-    
-    glm::mat3 stress5 = computeStress(testParticle);
-    
-    std::cout << "Resulting stress:\n";
-    for (int i = 0; i < 3; i++) {
-        std::cout << "[ ";
-        for (int j = 0; j < 3; j++) {
-            std::cout << stress5[i][j] << " ";
-        }
-        std::cout << "]\n";
-    }
-    std::cout << "Expected: All zeros (no stress from pure rotation)\n\n";
-    
-    // Test 6: Extremely large deformation
-    testParticle.F = glm::mat3(1000.0f);
-    
-    std::cout << "Test 6: Extremely large deformation\n";
-    std::cout << "Input F: All elements = 1000.0\n";
-    
-    glm::mat3 stress6 = computeStress(testParticle);
-    
-    std::cout << "Resulting stress:\n";
-    for (int i = 0; i < 3; i++) {
-        std::cout << "[ ";
-        for (int j = 0; j < 3; j++) {
-            std::cout << stress6[i][j] << " ";
-        }
-        std::cout << "]\n";
-    }
-    std::cout << "Expected: Large but finite values (should not be NaN or inf)\n";
-    
-    std::cout << "=== End of computeStress testing ===\n";
-}
-
-
-
